@@ -1,0 +1,21 @@
+# Secret scanning rules for CI (see .github/workflows/ci.yml)
+title = "CivicTree secret scan"
+
+[extend]
+# Start from gitleaks' built-in rules
+useDefault = true
+
+[allowlist]
+description = "Documentation examples and provider reference files, which contain no real credentials"
+paths = [
+  # API documentation examples (e.g. password: 'your-partner-password')
+  '''swagger\.js''',
+  '''swagger-output\.json''',
+  # Hubtel's own documentation, saved for reference
+  '''^ussd$''',
+  '''^payment$''',
+  '''^new payment$''',
+  '''^sms$''',
+  # Test fixtures use obvious placeholder values
+  '''tests/security/.*\.js''',
+]

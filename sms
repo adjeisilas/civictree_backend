@@ -1,0 +1,462 @@
+SMS
+Last updated July 8th, 2026
+
+Overview
+The Hubtel SMS API allows businesses to integrate SMS functionality into their applications. With this API, you can send:
+
+Send Simple/Batch Messages to individuals or groups of people (batch).
+Send Personalized Messages to individuals or groups of people (batch).
+Hubtel also provides an SMPP (Short Message Peer-to-Peer) route for sending SMS, which allows high-throughput message delivery suitable for large-scale applications.
+
+The reference provides an overview of the Hubtel SMS API endpoints for interacting programmatically within your application and a guide to help you integrate with Hubtel's SMS SMPP route effectively.
+
+
+SMPP
+The SMPP route is designed for enterprises requiring reliable and efficient SMS delivery. It supports standard SMPP protocol features and ensures availability and scalability.
+
+SMPP Connection
+To connect to Hubtel's SMPP server, use the following details:
+
+Host: smpp.hubtel.com
+Port: 2775
+ClientID
+ClientSecret
+bulb-icon
+Note
+Contact your Retail Systems Engineer for your ClientID and ClientSecret.
+
+Supported Operations
+Hubtel's SMPP route supports the following operations:
+
+Bind Transmitter (TX): To send SMS messages.
+Bind Receiver (RX): To receive delivery receipts.
+Bind Transceiver (TRX): To send and receive messages and receipts.
+Submit_SM: To submit a single SMS message.
+Deliver_SM: To receive delivery receipts.
+Unbind: To close the SMPP session.
+Please refer to the detailed SMPP documentation provided here for further understanding.
+
+
+SMS API
+The Hubtel SMS API allows you to integrate multiple SMS functionalities into your applications. This document focuses on:
+
+Simple Messaging: send messages to individuals using POST and GET.
+Batch Simple Messaging: send simple messages to a group of people.
+Batch Personalized Messaging: Send personalized messages to a group of people.
+Message Status Check: Check the status of a message with messageId or batchId.
+
+API Reference
+
+Simple SEND SMS GET
+This endpoint allows you to send a simple message using GET method. You will need to pass clientId and clientSecret in the request.
+
+API Endpoint	https://sms.hubtel.com/v1/messages/send?clientsecret=xxxxxxxx&clientid=xxxxxxxx&from=Hubtel&to=0244xxxxxx&content=Helloworld
+Request Type	GET
+
+REQUEST PARAMETERS
+Parameter	Type	Requirement	Description
+clientid	String	Mandatory	ClientId needed to authenticate SMS request. You can find your clientid here.
+clientsecret	String	Mandatory	Clientsecret needed to authenticate SMS request. You can find your clientsecret here.
+from	String	Mandatory	Sender ID or Name recipients will see. Maximum characters for this value is 11.
+to	String	Mandatory	Mobile number of recipient.
+content	String	Mandatory	Content of the simple message
+
+SAMPLE REQUEST
+HTTP
+cURL
+PHP
+Python
+JS
+HTTP
+
+copy
+Copy
+GET /v1/messages/send?clientsecret=sgrorne&clientid=qoohqvcp&from=Abrantie&to=233546335113&content="GoTesting" HTTP/1.1
+Host: sms.hubtel.com
+
+RESPONSE PARAMETERS
+Parameter	Type	Description
+rate	Float	Cost per sms
+messageId	String	Unique identifier of messages
+status	Int	Status code of the requeest
+networkId	String	networkId of message
+clientReference	String	ClientReference of message. Can be null
+statusDescription	String	Brief description of request status
+
+SAMPLE RESPONSE
+201 Created
+
+copy
+Copy
+  {
+      "rate": 0.0309,
+      "messageId": "9c5f3edc-529e-4182-959b-aeb17b9ddad4", 
+      "status": 0,
+      "networkId": "62001", 
+      "clientReference": null,
+      "statusDescription": "request submitted successfully"
+  }
+
+Simple SEND SMS POST
+This endpoint allows you to send a simple message using POST method. Send an HTTP POST request to the below URL and authenticate your request with Basic Auth using your SMS API credentials.
+
+API Endpoint	https://sms.hubtel.com/v1/messages/send
+Request Type	POST
+Content Type	JSON
+
+REQUEST PARAMETERS
+Parameter	Type	Requirement	Description
+From	String	Mandatory	SenderId or Name recipients will see. Maximum characters for this value is 11.
+To	String	Mandatory	Mobile number of recipient.
+Content	String	Mandatory	Content of the message.
+
+SAMPLE REQUEST
+HTTP
+cURL
+PHP
+Python
+JS
+HTTP
+
+copy
+Copy
+POST /v1/messages/send HTTP/1.1 
+Host: sms.hubtel.com
+Content-Type: application/json
+Authorization: Basic cW92Y7c2dyb3Juam=
+
+{
+  "From": "AbrantieLai",
+  "To": "233546335113",
+  "Content": "This is a test. Kindly ignore."
+}
+
+RESPONSE PARAMETERS
+Parameter	Type	Description
+rate	Float	Cost per sms
+messageId	String	Unique identifier of messages
+status	Int	Status code of the requeest
+networkId	String	networkId of message
+clientReference	String	ClientReference of message. Can be null
+statusDescription	String	Brief description of request status
+
+SAMPLE RESPONSE
+201 Created
+
+copy
+Copy
+{
+  "rate": 0.0246,
+  "messageId": "fab43849-6c5b-4334-a88b-d06520b1ace8",
+  "status": 0,
+  "networkId": "62002",
+  "clientReference": null,
+  "statusDescription": "request submitted successfully"
+}
+
+Batch Simple Messaging
+This endpoint allows you to send messages to a group of people. Send an HTTP POST request to the below URL and authenticate your request with Basic Auth using your SMS API credentials.
+
+API Endpoint	https://sms.hubtel.com/v1/messages/batch/simple/send
+Request Type	POST
+Content Type	JSON
+
+REQUEST PARAMETERS
+Parameter	Type	Requirement	Description
+From	String	Mandatory	SenderId or Name recipients will see. Maximum characters for this value is 11.
+Recipients	Array	Mandatory	MSISDNs to receive of message
+Content	String	Mandatory	Content of the simple message
+
+SAMPLE REQUEST
+HTTP
+cURL
+PHP
+Python
+JS
+HTTP
+
+copy
+Copy
+POST /v1/messages/batch/simple/send HTTP/1.1 
+Host: sms.hubtel.com
+Content-Type: application/json
+Authorization: Basic cW92Y6c2dyb3Juam=
+
+{
+    "From": "AbrantieLai",
+    "Recipients": [
+        "233546335113",
+        "233501431586"
+    ],
+    "Content": "Welcome to the first ever bulk SMS via API in Ghana"
+}
+
+RESPONSE PARAMETERS
+Parameter	Type	Description
+batchId	String	The ID of the batch of messages
+status	Int	Status code of the request returned by SMS API
+data	ArrayOfObjects	This contains other objects
+recipient	String	MSISDNs to receive message
+content	String	Content of the simple message
+messageId	String	Unique identifier of message
+
+SAMPLE RESPONSE
+200 OK
+
+copy
+Copy
+{
+  "batchId": "165949ee-431b-4bf8-9eca-108058a8bc32", 
+  "status": 0,
+  "data": [
+    {
+      "recipient": "233546335113",
+      "content": "Welcome to the first ever bulk SMS via API in Ghana", 
+      "messageId": "e80133f9-e822-457c-98fb-d217bc4a1f83"
+    }, 
+    {
+      "recipient": "233501431586",
+      "content": "Welcome to the first ever bulk SMS via API in Ghana", 
+      "messageId": "ebc7948a-7c81-4396-9104-9c99fc921069"
+    } 
+  ]
+}
+
+Batch Personalized Messaging
+This endpoint allows you to send personalized messages to a group of people. Send an HTTP POST request to the below URL and authenticate your request with Basic Authentication using your SMS API credentials.
+
+API Endpoint	https://sms.hubtel.com/v1/messages/batch/personalized/send
+Request Type	POST
+Content Type	JSON
+REQUEST PARAMETERS
+Parameter	Type	Requirement	Description
+From	String	Mandatory	SenderId or Name recipients will see. Maximum characters for this value is 11.
+personalizedRecipients	ArrayOfObjects	Mandatory	Contains object of recipients and content.
+To	String	Mandatory	MSISDNs to receive message
+Content	String	Mandatory	Content of the simple message
+
+SAMPLE REQUEST
+HTTP
+cURL
+PHP
+Python
+JS
+HTTP
+
+copy
+Copy
+POST /v1/messages/batch/personalized/send HTTP/1.1 
+Host: sms.hubtel.com
+Content-Type: application/json
+Authorization: Basic cW92Y6c2dyb3Juam=
+
+{
+    "From" : "AbrantieCo",
+    "personalizedRecipients": [
+      {
+          "To": "233501431586",
+          "Content":"Hi Pheezy, thank you for all you do for this business"
+      },
+      {
+          "To": "233501431586",
+          "Content":"Hi Joe, thank you for all you do for this business"
+      }
+    ]
+}
+
+RESPONSE PARAMETERS
+Parameter	Type	Description
+batchId	String	The ID of the batch of messages
+status	Int	Status code of the request returned by SMS API
+data	ArrayOfObjects	This contains other objects
+recipient	String	MSISDNs to receive message
+content	String	Content of the simple message
+messageId	String	Unique identifier of message
+
+SAMPLE RESPONSE
+200 OK
+
+copy
+Copy
+{
+    "batchId": "18ee6a2a-29ac-41c6-b70f-de809b040584", 
+    "status": 0,
+    "data": [ 
+      {
+          "recipient": "233501431586",
+          "content": "Hi Pheezy, thank you for all you do for this business", 
+          "messageId": "350fd34d-dce1-4694-a4c9-d9b97d1f4593"
+      }, 
+      {
+          "recipient": "233546335113",
+          "content": "Hi Joe, thank you for all you do for this business", 
+          "messageId": "f58e7f2a-203a-4079-a518-7f6647099b5e"
+      }
+    ]
+}
+
+Status Check
+This helps to check for the status of an SMS by providing an identifier.
+
+
+Status Check with MessageID
+A query to this endpoint returns the status of a single message.
+
+bulb-icon
+Note
+Replace the messageID in the below endpoint with the messageID of your messages.
+
+API Endpoint	https://sms.hubtel.com/v1/messages/{messageId}
+Request Type	GET
+
+REQUEST PARAMETERS
+Parameter	Type	Requirement	Description
+messageID	String	Mandatory	An ID of one of the sent messages
+
+SAMPLE REQUEST (Message ID)
+HTTP
+cURL
+PHP
+Python
+JS
+HTTP
+
+copy
+Copy
+GET /v1/messages/eadbfcd0-94d1-438f-ad32-0013f34042c2 HTTP/1.1 
+Host: sms.hubtel.com
+
+RESPONSE PARAMETERS
+Parameter	Type	Description
+rate	Float	Cost per sms
+batchId	String	Unique identifier of batch message.
+messageId	String	Unique identifier of individual message.
+content	String	Content of the simple message.
+status	String	Current status of message based on DeliveryReceipt (DLR) by Telco.
+updateTime	String	DLR update time.
+time	String	The time SMS was sent.
+to	String	MSISDN to receive message.
+from	String	SenderId or name recipient will see.
+
+SAMPLE RESPONSE
+200 OK
+
+copy
+Copy
+{
+  "rate": 0.0309,
+  "batchId": null,
+  "messageId": "eadbfcd0-94d1-438f-ad32-0013f34042c2",
+  "content": "The Job is the JOB","status": "Delivered",
+  "status": "Delivered",
+  "updateTime": "2023-05-30T16:43:15",
+  "time": "2023-05-30T16:43:13.7208383Z",
+  "to": "233546335113",
+  "from": "AbrantieCo"
+}
+
+Status Check with BatchID
+A query to this endpoint returns the status of a batch of messages.
+
+bulb-icon
+Note
+Replace the batchID in the below endpoint with the batchID of your messages.
+
+
+API Endpoint	https://sms.hubtel.com/v1/messages/{batchId}
+Request Type	GET
+
+REQUEST PARAMETERS
+Parameter	Type	Requirement	Description
+batchId	String	Mandatory	An ID of one of the sent messages
+
+SAMPLE REQUEST (Batch ID)
+HTTP
+cURL
+PHP
+Python
+JS
+HTTP
+
+copy
+Copy
+GET /v1/messages/batch/eadbfcd0-94d1-438f-ad32-0013f34042c2 HTTP/1.1 
+Host: sms.hubtel.com
+
+RESPONSE PARAMETERS
+Parameter	Type	Description
+batchId	String	Unique identifier of batch message.
+data	ArrayOfObjects	This contains other objects.
+rate	Float	Cost per sms.
+messageId	String	Unique identifier of individual message.
+content	String	Content of the simple message.
+status	String	Current status of message based on DeliveryReceipt (DLR) by Telco.
+updateTime	String	DLR update time.
+time	String	The time SMS was sent.
+to	String	MSISDN to receive message.
+from	String	SenderId or name recipient will see.
+
+SAMPLE RESPONSE
+200 OK
+
+copy
+Copy
+{
+    "batchId": "eadbfcd0-94d1-438f-ad32-0013f34042c2", 
+    "data": [
+      {
+          "rate": 0.0309,
+          "messageId": "f58e7f2a-203a-4079-a518-7f6647099b5e",
+          "content": "Hi Joe, thank you for all you do for this business",
+          "status": "Delivered",
+          "updateTime": "2023-03-21T12:54:43",
+          "time": "2023-03-21T12:50:27.893495Z",
+          "to": "233546335113",
+          "from": "AbrantieCo" 
+      },
+      {
+          "rate": 0.0309,
+          "messageId": "350fd34d-dce1-4694-a4c9-d9b97d1f4593",
+          "content": "Hi Pheezy, thank you for all you do for this business",
+          "status": "Delivered",
+          "updateTime": "2023-03-21T12:50:34",
+          "time": "2023-03-21T12:50:27.893495Z",
+          "to": "233501431586",
+          "from": "AbrantieCo"
+      }
+    ]
+}
+
+SMS Statuses
+Below are SMS statuses based on DeliveryReceipts (DLR)s by Telco.
+
+Delivered: These messages have been reliably and successfully dispatched to the recipient's phone. This constitutes the ultimate Delivery Receipt (DLR) status provided by a telco.
+Sent: Sent messages encompass messages that have been forwarded by Hubtel to the recipient's network operator for eventual delivery. These messages are currently in a state of pending delivery by the telcos. To ascertain their ultimate status, you can utilize the status check API at a later time.
+Pending: Pending messages are those in a queue, awaiting discharge by Hubtel to the recipient's network operator for the purpose of delivery.
+Blacklisted: Blacklisted numbers correspond to individuals who have explicitly communicated with telcos to abstain from receiving unsolicited bulk messages on their mobile devices. As a result, the telco designates these numbers for blacklist inclusion. It's important to emphasize that the network operator is responsible for delivering messages to the handset. Hubtel solely receives the ultimate message status from the mobile network operator.
+Undeliverable/Failed, Unrouteable/Error, Rejected: Occurrences of messages like these could arise from various factors, such as the customer's phone being powered off, inaccessible, or experiencing network unavailability. Additionally, issues could stem from the recipient being situated outside network coverage during the moment the message was dispatched to their device. These various statuses are dependent on the various Telcos.
+NACK/0x0000000b/Invalid Destination Address: These statuses mean that the recipient number may be inaccurate or inadequately formatted.
+NACK/0x0000000a/Invalid Source Address: These statuses mean that the value for the “From” key in your request may have exceeded the maximum limit of 11.
+
+Response Codes
+The Hubtel SMS API uses standard HTTP error reporting. Successful requests return HTTP status codes in the 2xx. Failed requests return status codes in 4xx and 5xx. Error responses are included in the JSON response body, which contains information about the error.
+
+Http Code	Status	Description
+200	0	The request was successful and the message has been sent for onward delivery
+201	0	The request was successful and the message has been sent for onward delivery
+201	100	General invalid request. Returned when no data is sent or a malformed request is received
+201	1	Invalid Destination address received. The recipient's phone number is not a valid phone number
+201	2	Invalid Source address was sent. You need to be aware of the sender address restrictions
+400	3	The message body was too long.
+400	4	The message is not routable on Hubtel gateway
+400	5	The delivery time specified was not a valid time.
+6	The message content was rejected or is invalid.
+7	One or more parameters are not allowed in the message. Details will be provided as part of the response.
+8	One or more parameters are not valid for the message. Details will be provided as part of the response.
+12	Payment required on account; Kindly fund your account
+401		The request authorization failed
+402		Your account does not have enough messaging credit to send the message.
+403		Forbidden. This means that the recipient has not given his/her approval to receive messages
+404		The specified message was not found.
+500		The request failed on the server
+502		Bad Gateway. The server could not find any appropriate gateway for the request.

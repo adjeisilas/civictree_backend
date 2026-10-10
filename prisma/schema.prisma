@@ -1,0 +1,482 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../generated/prisma"
+  binaryTargets = ["native", "debian-openssl-1.0.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+
+
+model User {
+  id             String             @id @default(uuid())
+  fullName       String
+  phoneNumber    String?            @unique
+  email          String             @unique
+  role           Role               @default(USER)
+  password       String
+  firstTimeLogin Boolean            @default(true)
+  isActive       Boolean            @default(true)
+  failedLoginAttempts Int           @default(0)
+  lockedUntil    DateTime?
+  // Two-factor sign-in (authenticator app). The secret is stored encrypted.
+  twoFactorSecret   String?         @db.VarChar(512)
+  twoFactorEnabled  Boolean         @default(false)
+  twoFactorLastStep Int?            // last accepted time step, so a code cannot be replayed
+  twoFactorRecoveryCodes TwoFactorRecoveryCode[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  refreshTokens  RefreshToken[]
+  otps           Otp[]
+  pushSubscriptions PushSubscription[]
+  notifications     Notification[]
+  activityLogs      ActivityLog[]
+  voucherUploads    VoucherUploadHistory[]
+  affiliateProfile  AffiliateProfile?
+  adminWithdrawals  AdminWithdrawal[]
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique @db.VarChar(512)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isRevoked Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TwoFactorRecoveryCode {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String    // HMAC-SHA256 of the recovery code, never the code itself
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Otp {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  code      String   // HMAC-SHA256 of the 6-digit code, never the code itself
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique @db.VarChar(512)
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  type      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum Role {
+  USER
+  ADMIN
+  AFFILIATE
+  PARTNER
+}
+
+enum AffiliateStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum PayoutMethod {
+  MOBILE_MONEY
+  BANK_ACCOUNT
+}
+
+enum WithdrawalStatus {
+  PENDING
+  PROCESSING
+  APPROVED
+  REJECTED
+  FAILED
+}
+
+model AffiliateProfile {
+  id                  String               @id @default(uuid())
+  userId              String               @unique
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  affiliateCode       String               @unique
+  businessName        String?
+  location            String?
+  status              AffiliateStatus      @default(PENDING)
+  rejectionReason     String?
+  ussdCode            String?              @unique
+  payoutMethod        PayoutMethod         @default(MOBILE_MONEY)
+  momoNetwork         String?
+  momoNumber          String?
+  momoAccountName     String?
+  bankName            String?
+  bankAccountNumber   String?
+  bankAccountName     String?
+  totalVouchersSold   Int                  @default(0)
+  totalSalesGenerated Decimal              @default(0.00) @db.Decimal(10, 2)
+  // Withdrawals are held for a cooling-off period after payout details change
+  payoutDetailsUpdatedAt DateTime?
+  commissions         AffiliateCommission[]
+  withdrawals         WithdrawalRequest[]
+  orders              Order[]
+  ussdDialers         UssdDialer[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model AffiliateConfig {
+  id                    String   @id @default(uuid())
+  wassceNovdecCommission Decimal  @default(2.00) @db.Decimal(10, 2)
+  beceCommission         Decimal  @default(1.50) @db.Decimal(10, 2)
+  minWithdrawalAmount   Decimal  @default(10.00) @db.Decimal(10, 2)
+  dailyWithdrawalCap    Decimal  @default(1000.00) @db.Decimal(10, 2)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model AffiliateCommission {
+  id          String           @id @default(uuid())
+  affiliateId String
+  affiliate   AffiliateProfile @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  orderId     String           @unique
+  order       Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  voucherType VoucherType
+  amount      Decimal          @db.Decimal(10, 2)
+  createdAt   DateTime         @default(now())
+}
+
+model WithdrawalRequest {
+  id             String           @id @default(uuid())
+  affiliateId    String
+  affiliate      AffiliateProfile @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  amount         Decimal          @db.Decimal(10, 2)
+  payoutMethod   PayoutMethod
+  accountDetails String           @db.Text
+  status         WithdrawalStatus @default(PENDING)
+  adminNote      String?          @db.Text
+  processedAt    DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+}
+
+model AdminWithdrawal {
+  id             String       @id @default(uuid())
+  adminId        String
+  admin          User         @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  amount         Decimal      @db.Decimal(10, 2)
+  payoutMethod   PayoutMethod
+  accountDetails String       @db.Text
+  status         String       @default("COMPLETED")
+  transactionRef String?
+  failureReason  String?      @db.Text
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @default(now()) @updatedAt
+}
+
+model UssdDialer {
+  id           String            @id @default(uuid())
+  phoneNumber  String
+  voucherType  VoucherType?
+  source       String            @default("MAIN_USSD") // "MAIN_USSD" or "AFFILIATE_USSD"
+  dialedCode   String?
+  affiliateId  String?
+  affiliate    AffiliateProfile? @relation(fields: [affiliateId], references: [id], onDelete: SetNull)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@unique([phoneNumber, voucherType])
+  @@index([phoneNumber, voucherType])
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  details   String?  @db.Text
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+}
+
+enum VoucherType {
+  WASSCE_NOVDEC
+  BECE
+}
+
+enum VoucherStatus {
+  AVAILABLE
+  SOLD
+}
+
+model Voucher {
+  id              String               @id @default(uuid())
+  type            VoucherType
+  serialNumber    String
+  pin             String
+  status          VoucherStatus        @default(AVAILABLE)
+  uploadHistoryId String?
+  uploadHistory   VoucherUploadHistory? @relation(fields: [uploadHistoryId], references: [id], onDelete: SetNull)
+  orderId         String?
+  order           Order?               @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@unique([serialNumber, type])
+  @@index([type, status])
+}
+
+model VoucherConfig {
+  id                        String    @id @default(uuid())
+  currency                  String    @default("GHS")
+  wassceNovdecPrice         Decimal   @db.Decimal(10, 2)
+  wassceNovdecLimit         Int       @default(100)
+  becePrice                 Decimal   @db.Decimal(10, 2)
+  beceLimit                 Int       @default(100)
+  wassceNovdecLastAlertedAt DateTime?
+  beceLastAlertedAt         DateTime?
+  wassceNovdecReleaseDate   DateTime?
+  beceReleaseDate           DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+}
+
+model VoucherUploadHistory {
+  id            String    @id @default(uuid())
+  filename      String?
+  fileUrl       String?   @db.VarChar(512)
+  uploadType    String    // "BULK_CSV", "BULK_EXCEL", "SINGLE"
+  totalUploaded Int
+  uploadedById  String
+  uploadedBy    User      @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  vouchers      Voucher[]
+  createdAt     DateTime  @default(now())
+}
+
+enum OrderChannel {
+  WEB
+  USSD
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum DeliveryStatus {
+  NOT_SENT
+  SENT
+  FAILED
+}
+
+model Order {
+  id             String            @id
+  customerName   String?
+  phoneNumber    String
+  voucherType    VoucherType
+  quantity       Int
+  amount         Decimal           @db.Decimal(10, 2)
+  channel        OrderChannel      @default(WEB)
+  paymentStatus  PaymentStatus     @default(PENDING)
+  deliveryStatus DeliveryStatus    @default(NOT_SENT)
+  transactionId  String?           @unique
+  affiliateId    String?
+  affiliateCode  String?
+  affiliate      AffiliateProfile?    @relation(fields: [affiliateId], references: [id], onDelete: SetNull)
+  commission     AffiliateCommission?
+  vouchers       Voucher[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([paymentStatus, deliveryStatus, voucherType])
+  @@index([affiliateId])
+}
+
+enum TimetableType {
+  BECE
+  WASSCE_NOVDEC
+}
+
+model Timetable {
+  id          String        @id @default(uuid())
+  type        TimetableType @unique
+  title       String
+  examYear    Int           @default(2026)
+  startDate   DateTime?
+  description String?       @db.Text
+  isPublished Boolean       @default(true)
+  fileUrl     String?       @db.VarChar(512)
+  fileName    String?
+  fileSize    String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+enum PartnerStatus {
+  Active
+  Pending
+  Suspended
+  Inactive
+}
+
+enum SettlementStatus {
+  Pending
+  Processing
+  Completed
+  Failed
+  Rejected
+}
+
+enum PayoutMethodType {
+  MOMO
+  BANK
+}
+
+enum PartnerNotificationType {
+  TRANSACTION_SURGE
+  PAYOUT_STATUS
+  DAILY_DIGEST
+  CONTRACT_UPDATE
+  SYSTEM
+}
+
+model Partner {
+  id                      String                  @id @default(uuid())
+  partnerId               String                  @unique // e.g. "PRT-8801"
+  partnerName             String                  // e.g. "BOATENG OWUSU"
+  legalEntityName         String?                 // e.g. "Apex Capital Ventures Ltd (Ghana)"
+  email                   String                  @unique
+  phone                   String
+  passwordHash            String
+  contractRef             String                  @unique // e.g. "CTR-REV-2026-04"
+  sharePercentage         Decimal                 @default(5.0) @db.Decimal(5, 2)
+  status                  PartnerStatus           @default(Active)
+  startDate               DateTime                @default(now())
+  lifetimeShareEarnings   Decimal                 @default(0.00) @db.Decimal(12, 2)
+  withdrawnAmount         Decimal                 @default(0.00) @db.Decimal(12, 2)
+  availableBalance        Decimal                 @default(0.00) @db.Decimal(12, 2)
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+
+  transactions            PartnerTransaction[]
+  settlements             PartnerSettlement[]
+  payoutAccounts          PartnerPayoutAccount[]
+  notifications           PartnerNotification[]
+  settings                PartnerSetting?
+}
+
+model PartnerTransaction {
+  id                String          @id @default(uuid())
+  partnerId         String
+  partner           Partner         @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  orderId           String?
+  orderRef          String
+  voucherType       String
+  quantity          Int
+  unitPrice         Decimal         @db.Decimal(10, 2)
+  grossAmount       Decimal         @db.Decimal(10, 2)
+  partnerPercentage Decimal         @default(0.00) @db.Decimal(5, 2)
+  partnerEarning    Decimal         @db.Decimal(10, 2)
+  channel           String          @default("Web Direct")
+  paymentMethod     String          @default("Mobile Money")
+  settlementStatus  String          @default("Accrued")
+  createdAt         DateTime        @default(now())
+
+  @@index([partnerId, createdAt])
+}
+
+model PartnerSettlement {
+  id                 String           @id @default(uuid())
+  partnerId          String
+  partner            Partner          @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  reference          String           @unique
+  amount             Decimal          @db.Decimal(10, 2)
+  fee                Decimal          @default(0.00) @db.Decimal(10, 2)
+  netAmount          Decimal          @db.Decimal(10, 2)
+  payoutMethod       PayoutMethodType @default(MOMO)
+  provider           String
+  destinationAccount String
+  accountName        String
+  status             SettlementStatus @default(Pending)
+  requestedAt        DateTime         @default(now())
+  processedAt        DateTime?
+  notes              String?
+  receiptUrl         String?
+}
+
+model PartnerPayoutAccount {
+  id            String           @id @default(uuid())
+  partnerId     String
+  partner       Partner          @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  type          PayoutMethodType @default(MOMO)
+  provider      String           // "MTN Mobile Money", "Telecel Cash", "GCB Bank"
+  accountNumber String
+  accountName   String
+  isDefault     Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+}
+
+model PartnerNotification {
+  id        String                  @id @default(uuid())
+  partnerId String
+  partner   Partner                 @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      PartnerNotificationType
+  isRead    Boolean                 @default(false)
+  link      String?
+  createdAt DateTime                @default(now())
+}
+
+model PartnerSetting {
+  id                      String   @id @default(uuid())
+  partnerId               String   @unique
+  partner                 Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  autoSettlementEnabled   Boolean  @default(true)
+  autoSettlementThreshold Decimal  @default(1000.00) @db.Decimal(10, 2)
+  settlementFrequency     String   @default("DAILY")
+  defaultPayoutAccountId  String?
+  emailDailyDigest        Boolean  @default(true)
+  emailPayoutAlerts       Boolean  @default(true)
+  smsSurgeAlerts          Boolean  @default(true)
+  smsPayoutAlerts         Boolean  @default(true)
+  surgeAlertThreshold     Int      @default(50)
+  currencyDisplay         String   @default("GHS")
+  timezone                String   @default("GMT (Accra)")
+}

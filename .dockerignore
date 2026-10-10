@@ -1,0 +1,33 @@
+# Keep secrets, local state and development-only files out of the image
+.env
+.env.*
+node_modules
+generated
+npm-debug.log*
+pnpm-debug.log*
+
+# Database dumps must never end up in an image
+backups
+
+# Tests, scratch work and manual scripts
+tests
+scratch
+scripts/test_*
+scripts/send_test_webhook.js
+settle_real_partner.js
+resend_partner_settlements.js
+
+# Documentation and provider references
+*.md
+*.pdf
+LICENSE
+ussd
+payment
+"new payment"
+sms
+
+# Git and editor files
+.git
+.gitignore
+.vscode
+.idea

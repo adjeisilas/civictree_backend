@@ -1,0 +1,77 @@
+{
+  "name": "civictree_backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "generate-vapid": "node utils/generateVapidKeys.js",
+    "swagger": "node swagger.js",
+    "seed:partner": "node prisma/seedPartner.js",
+    "settle:partner": "node settle_real_partner.js",
+    "audit:orders": "node scripts/audit_orders.js",
+    "resend:partner": "node resend_partner_settlements.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:security": "node --test --test-concurrency=1 \"tests/security/*.test.js\"",
+    "postinstall": "prisma generate --schema=prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:status": "prisma migrate status",
+    "db:push": "prisma db push --schema=prisma/schema.prisma",
+    "db:backup": "node scripts/backup_database.js",
+    "db:restore": "node scripts/restore_database.js",
+    "db:verify-backup": "node scripts/verify_backup.js",
+    "encrypt:pins": "node scripts/encrypt_voucher_pins.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AsemaniJoshua/civictree_backend.git"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "axios": "^1.13.6",
+    "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.9.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "exceljs": "^4.4.0",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.1.1",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^10.0.10",
+    "otplib": "^12.0.1",
+    "qrcode": "^1.5.4",
+    "swagger-ui-express": "^5.0.1",
+    "web-push": "^3.6.7",
+    "winston": "^3.19.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "nodemon": "^3.1.14",
+    "prisma": "^6.19.3",
+    "swagger-autogen": "^2.23.7"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/AsemaniJoshua/civictree_backend/issues"
+  },
+  "homepage": "https://github.com/AsemaniJoshua/civictree_backend#readme",
+  "overrides": {
+    "uuid": "^11.1.1",
+    "deepmerge-ts": "^8.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "uuid": "^11.1.1",
+      "deepmerge-ts": "^8.0.0"
+    }
+  }
+}
