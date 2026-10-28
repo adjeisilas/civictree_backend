@@ -10,7 +10,8 @@ import {
   phoneNumberVariants
 } from '../../utils/order/orderHelpers.js';
 
-const VOUCHER_TYPES = ['BECE', 'WASSCE_NOVDEC'];
+import { VOUCHER_TYPES, displayNameFor } from '../../utils/voucher/voucherTypes.js';
+import { mainMenu, releaseDateMenu, releaseDateMessage } from '../../utils/ussd/ussdMenu.js';
 
 const formatDate = (date) => {
   const pad = (n) => String(n).padStart(2, '0');
@@ -23,7 +24,7 @@ const formatDate = (date) => {
   return `${day}/${month}/${year} ${hours}:${minutes}`;
 };
 
-const displayNameFor = (voucherType) => (voucherType === 'WASSCE_NOVDEC' ? 'WASSCE/NOVDEC' : voucherType);
+
 
 /**
  * Handles interactive USSD menu navigation requests for Affiliate channels.
@@ -100,8 +101,8 @@ export const handleAffiliateUssdInteraction = async (req, res, next) => {
 
     const affStatePrefix = affiliate ? `AFF:${affiliate.id}|` : '';
     const welcomeHeader = affiliate ? `${affiliate.businessName || 'CivicTree Partner'} Vouchers:` : 'CivicTree Vouchers:';
-    const mainMenuText = (header = welcomeHeader) =>
-      `${header}\n1. Buy BECE (GHS ${Number(config.becePrice).toFixed(2)})\n2. Buy WASSCE/NOVDEC (GHS ${Number(config.wassceNovdecPrice).toFixed(2)})\n3. Transactions\n4. Release Dates\n5. Support`;
+    const menu = mainMenu(config);
+    const mainMenuText = (header = welcomeHeader) => menu.text(header);
 
     const prompt = (message, label, nextStep, fieldType = 'text') => res.status(200).json({
       SessionId,
@@ -132,9 +133,10 @@ export const handleAffiliateUssdInteraction = async (req, res, next) => {
 
     // STATE: Selection of option from main menu
     if (currentActionState === 'SELECT_OPTION') {
-      // Options 1, 2: Buy Vouchers (1: BECE, 2: WASSCE/NOVDEC)
-      if (['1', '2'].includes(input)) {
-        const voucherType = input === '1' ? 'BECE' : 'WASSCE_NOVDEC';
+      // Buying occupies the first options, one per voucher type we sell
+      const selectedType = menu.buyOptions.find((option) => option.key === input)?.voucherType;
+      if (selectedType) {
+        const voucherType = selectedType;
 
         // Track affiliate USSD dialer for the selected voucher type
         trackUssdDialer({
@@ -165,7 +167,7 @@ export const handleAffiliateUssdInteraction = async (req, res, next) => {
       }
 
       // Option 3: Transactions List (only this caller's own orders)
-      if (input === '3') {
+      if (input === menu.transactions) {
         const orders = await prisma.order.findMany({
           where: {
             phoneNumber: { in: phoneNumberVariants(Mobile) },
@@ -189,17 +191,13 @@ export const handleAffiliateUssdInteraction = async (req, res, next) => {
         return prompt(menuMessage, 'Select Transaction', `TX_SELECT:${orderIdsCsv}`);
       }
 
-      // Option 4: Exam Results Release Dates Sub-Menu
-      if (input === '4') {
-        return prompt(
-          'Select Release Date:\n1. BECE Results Release Date\n2. WASSCE Results Release Date',
-          'Release Dates Menu',
-          'SELECT_RELEASE_DATE_TYPE'
-        );
+      // Exam results release dates submenu
+      if (input === menu.releaseDates) {
+        return prompt(releaseDateMenu().text, 'Release Dates Menu', 'SELECT_RELEASE_DATE_TYPE');
       }
 
-      // Option 5: Support Contact
-      if (input === '5') {
+      // Support contact
+      if (input === menu.support) {
         return release('Call or WhatsApp Civictree on 0556069880 for support.', 'Support');
       }
 
@@ -207,11 +205,10 @@ export const handleAffiliateUssdInteraction = async (req, res, next) => {
       return prompt(mainMenuText('Invalid option.'), 'Welcome Menu', 'SELECT_OPTION');
     }
 
-    // STATE: Select release date type for affiliate session (1: BECE, 2: WASSCE)
+    // STATE: Select release date type, numbered as in the buy options
     if (currentActionState === 'SELECT_RELEASE_DATE_TYPE') {
-      if (input === '1' || input === '2') {
-        const voucherType = input === '1' ? 'BECE' : 'WASSCE_NOVDEC';
-
+      const voucherType = releaseDateMenu().voucherTypeForKey(input);
+      if (voucherType) {
         trackUssdDialer({
           phoneNumber: Mobile,
           voucherType,
@@ -220,13 +217,10 @@ export const handleAffiliateUssdInteraction = async (req, res, next) => {
           affiliateId: affiliate ? affiliate.id : null
         });
 
-        if (voucherType === 'BECE') {
-          const bDate = config.beceReleaseDate ? formatDate(config.beceReleaseDate).split(' ')[0] : 'To be announced';
-          return release(`The BECE results are expected to be released on ${bDate}.`, 'BECE Release Date');
-        }
-
-        const wnDate = config.wassceNovdecReleaseDate ? formatDate(config.wassceNovdecReleaseDate).split(' ')[0] : 'To be announced';
-        return release(`The WASSCE results are expected to be released on ${wnDate}.`, 'WASSCE Release Date');
+        return release(
+          releaseDateMessage(config, voucherType, formatDate),
+          `${displayNameFor(voucherType)} Release Date`
+        );
       }
 
       return release('Invalid option selected. Session ended.', 'Error');

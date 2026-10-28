@@ -13,8 +13,13 @@
  *
  * The same function answers "how many people would this reach?", so the count
  * the admin approves is the list that actually goes out.
+ *
+ * Contacts cleared by an admin are excluded: USSD dialer rows are deleted
+ * outright, and order-derived contacts sit behind a cut-off until that customer
+ * orders again. See smsContacts.js.
  */
 import { prisma } from '../../config/config.js';
+import { clearanceCutoffs, orderScope, dialerScope } from './smsContacts.js';
 
 export const RECIPIENT_TYPES = ['ALL', 'SUCCESSFUL', 'FAILED_ONLY'];
 
@@ -73,21 +78,24 @@ export async function buildSmsRecipients({ voucherType = null, recipientType }) 
     throw new Error(`Invalid recipientType "${recipientType}". Must be one of ${RECIPIENT_TYPES.join(', ')}.`);
   }
 
-  // Only filter by voucher type when one was asked for
-  const scope = voucherType ? { voucherType } : {};
+  // Contacts an admin has cleared are behind these cut-offs
+  const cutoffs = await clearanceCutoffs();
+  const orders = orderScope(voucherType, cutoffs);
+  const dialers = dialerScope(voucherType, cutoffs);
+
   let rawNumbers = [];
 
   if (segment === 'ALL') {
     // Everyone who dialled plus everyone who ordered, whether they paid or not
-    const [dialers, orders] = await Promise.all([
-      prisma.ussdDialer.findMany({ where: scope, select: { phoneNumber: true } }),
-      prisma.order.groupBy({ by: ['phoneNumber'], where: scope })
+    const [dialerRows, orderRows] = await Promise.all([
+      prisma.ussdDialer.findMany({ where: dialers, select: { phoneNumber: true } }),
+      prisma.order.groupBy({ by: ['phoneNumber'], where: orders })
     ]);
-    rawNumbers = [...dialers, ...orders].map((row) => row.phoneNumber);
+    rawNumbers = [...dialerRows, ...orderRows].map((row) => row.phoneNumber);
   } else if (segment === 'SUCCESSFUL') {
     const paid = await prisma.order.groupBy({
       by: ['phoneNumber'],
-      where: { ...scope, paymentStatus: 'SUCCESS' }
+      where: { AND: [orders, { paymentStatus: 'SUCCESS' }] }
     });
     rawNumbers = paid.map((row) => row.phoneNumber);
   } else {
@@ -95,8 +103,8 @@ export async function buildSmsRecipients({ voucherType = null, recipientType }) 
     // someone who paid as 024… is not treated as unpaid because they also
     // appear as 23324… on an abandoned attempt.
     const [paid, everyone] = await Promise.all([
-      prisma.order.groupBy({ by: ['phoneNumber'], where: { ...scope, paymentStatus: 'SUCCESS' } }),
-      prisma.order.groupBy({ by: ['phoneNumber'], where: scope })
+      prisma.order.groupBy({ by: ['phoneNumber'], where: { AND: [orders, { paymentStatus: 'SUCCESS' }] } }),
+      prisma.order.groupBy({ by: ['phoneNumber'], where: orders })
     ]);
 
     const paidPhones = canonicaliseAll(paid.map((row) => row.phoneNumber)).unique;

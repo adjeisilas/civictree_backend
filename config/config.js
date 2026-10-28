@@ -56,7 +56,9 @@ const config = {
     privateKey: process.env.VAPID_PRIVATE_KEY,
     email: process.env.EMAIL_USER
       ? (process.env.EMAIL_USER.startsWith('mailto:') || process.env.EMAIL_USER.startsWith('http') ? process.env.EMAIL_USER : `mailto:${process.env.EMAIL_USER}`)
-      : 'mailto:peterasemani1957@gmail.com'
+      // Web push requires a contact address; set EMAIL_USER rather than
+      // shipping someone's personal inbox as the fallback
+      : undefined
   },
   cloudinary: {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,

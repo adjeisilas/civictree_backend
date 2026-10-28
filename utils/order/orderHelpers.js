@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { prisma } from '../../config/config.js';
+import { unitPriceFrom } from '../voucher/voucherTypes.js';
 
 /**
  * Largest number of vouchers a single order may contain (web and USSD).
@@ -19,14 +20,11 @@ export const generateOrderId = async () => {
 };
 
 /**
- * Returns the current unit price for a voucher type from the pricing config,
- * or null when the type is unknown.
+ * Current unit price for a voucher type, or null when the type is unknown.
+ * Prices are named per type in voucherTypes.js, so a new type cannot quietly
+ * inherit another type's price.
  */
-export const getUnitPrice = (voucherConfig, voucherType) => {
-  if (voucherType === 'BECE') return Number(voucherConfig.becePrice);
-  if (voucherType === 'WASSCE_NOVDEC') return Number(voucherConfig.wassceNovdecPrice);
-  return null;
-};
+export const getUnitPrice = (voucherConfig, voucherType) => unitPriceFrom(voucherConfig, voucherType);
 
 /**
  * Returns the local (0XXXXXXXXX) and international (233XXXXXXXXX) forms of a Ghana number,

@@ -43,6 +43,7 @@ model User {
   voucherUploads    VoucherUploadHistory[]
   affiliateProfile  AffiliateProfile?
   adminWithdrawals  AdminWithdrawal[]
+  smsContactClearances SmsContactClearance[]
 }
 
 model RefreshToken {
@@ -163,6 +164,7 @@ model AffiliateConfig {
   id                    String   @id @default(uuid())
   wassceNovdecCommission Decimal  @default(2.00) @db.Decimal(10, 2)
   beceCommission         Decimal  @default(1.50) @db.Decimal(10, 2)
+  ctvetNabtexCommission  Decimal  @default(1.50) @db.Decimal(10, 2)
   minWithdrawalAmount   Decimal  @default(10.00) @db.Decimal(10, 2)
   dailyWithdrawalCap    Decimal  @default(1000.00) @db.Decimal(10, 2)
   createdAt             DateTime @default(now())
@@ -223,6 +225,31 @@ model UssdDialer {
   @@index([phoneNumber, voucherType])
 }
 
+/**
+ * Records that an admin cleared the SMS contact list.
+ *
+ * USSD dialer rows are deleted outright, so a caller who dials again registers
+ * as a new contact. Orders are financial records and are never deleted, so the
+ * phone numbers behind them are excluded from campaigns until that customer
+ * orders again - this row is the cut-off that decides "again".
+ *
+ * voucherType null means every type was cleared at once.
+ */
+model SmsContactClearance {
+  id             String       @id @default(uuid())
+  voucherType    VoucherType?
+  clearedAt      DateTime     @default(now())
+  clearedById    String?
+  clearedBy      User?        @relation(fields: [clearedById], references: [id], onDelete: SetNull)
+  /// How many UssdDialer rows the clearance removed, for the audit trail.
+  dialersDeleted Int          @default(0)
+  /// How many order-derived contacts it put behind the cut-off.
+  ordersExcluded Int          @default(0)
+  createdAt      DateTime     @default(now())
+
+  @@index([voucherType, clearedAt])
+}
+
 model ActivityLog {
   id        String   @id @default(uuid())
   userId    String?
@@ -237,6 +264,7 @@ model ActivityLog {
 enum VoucherType {
   WASSCE_NOVDEC
   BECE
+  CTVET_NABTEX
 }
 
 enum VoucherStatus {
@@ -268,10 +296,14 @@ model VoucherConfig {
   wassceNovdecLimit         Int       @default(100)
   becePrice                 Decimal   @db.Decimal(10, 2)
   beceLimit                 Int       @default(100)
+  ctvetNabtexPrice          Decimal   @default(0.00) @db.Decimal(10, 2)
+  ctvetNabtexLimit          Int       @default(100)
   wassceNovdecLastAlertedAt DateTime?
   beceLastAlertedAt         DateTime?
+  ctvetNabtexLastAlertedAt  DateTime?
   wassceNovdecReleaseDate   DateTime?
   beceReleaseDate           DateTime?
+  ctvetNabtexReleaseDate    DateTime?
   createdAt                 DateTime  @default(now())
   updatedAt                 DateTime  @updatedAt
 }
@@ -331,6 +363,7 @@ model Order {
 enum TimetableType {
   BECE
   WASSCE_NOVDEC
+  CTVET_NABTEX
 }
 
 model Timetable {

@@ -1,4 +1,5 @@
 import { prisma } from '../../config/config.js';
+import { VOUCHER_TYPES, displayNameFor, priceFieldFor, stockLimitFrom } from '../../utils/voucher/voucherTypes.js';
 import { AppError } from '../../utils/error/AppError.js';
 
 /**
@@ -19,23 +20,38 @@ export const getPublicVoucherConfigs = async (req, res, next) => {
      }
   */
   try {
-    const [config, wassceNovdecAvailable, beceAvailable] = await Promise.all([
+    const [config, ...availableCounts] = await Promise.all([
       prisma.voucherConfig.findFirst(),
-      prisma.voucher.count({ where: { type: 'WASSCE_NOVDEC', status: 'AVAILABLE' } }),
-      prisma.voucher.count({ where: { type: 'BECE', status: 'AVAILABLE' } })
+      ...VOUCHER_TYPES.map((type) =>
+        prisma.voucher.count({ where: { type, status: 'AVAILABLE' } })
+      )
     ]);
 
-    const wassceNovdecLimit = config ? config.wassceNovdecLimit : 100;
-    const beceLimit = config ? config.beceLimit : 100;
+    const available = Object.fromEntries(
+      VOUCHER_TYPES.map((type, index) => [type, availableCounts[index]])
+    );
+
+    // The historical per-type keys are kept so existing clients keep working,
+    // and `types` carries the same figures in a shape a new type extends.
+    const legacyFields = {};
+    for (const type of VOUCHER_TYPES) {
+      const price = config ? Number(config[priceFieldFor(type)]) : 0;
+      legacyFields[priceFieldFor(type)] = price;
+      legacyFields[`${priceFieldFor(type).replace(/Price$/, '')}HasReachedLimit`] =
+        available[type] <= stockLimitFrom(config, type);
+    }
 
     res.status(200).json({
       success: true,
       data: {
         currency: config ? config.currency : 'GHS',
-        wassceNovdecPrice: config ? Number(config.wassceNovdecPrice) : 0,
-        wassceNovdecHasReachedLimit: wassceNovdecAvailable <= wassceNovdecLimit,
-        becePrice: config ? Number(config.becePrice) : 0,
-        beceHasReachedLimit: beceAvailable <= beceLimit
+        ...legacyFields,
+        types: VOUCHER_TYPES.map((type) => ({
+          type,
+          displayName: displayNameFor(type),
+          price: config ? Number(config[priceFieldFor(type)]) : 0,
+          hasReachedLimit: available[type] <= stockLimitFrom(config, type)
+        }))
       }
     });
   } catch (error) {

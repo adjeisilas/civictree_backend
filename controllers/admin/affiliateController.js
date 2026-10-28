@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../config/config.js';
 import { AppError } from '../../utils/error/AppError.js';
+import { VOUCHER_TYPES, commissionFieldFor, defaultCommissionFor } from '../../utils/voucher/voucherTypes.js';
 import { logActivity } from '../../utils/activityLog/activityLogger.js';
 import { getAffiliateBalance } from '../../utils/affiliate/affiliateBalance.js';
 import { sendHubtelPayout } from '../../utils/payment/hubtelHelper.js';
@@ -722,8 +723,9 @@ export const getAffiliateConfig = async (req, res, next) => {
     if (!config) {
       config = await prisma.affiliateConfig.create({
         data: {
-          wassceNovdecCommission: 2.00,
-          beceCommission: 1.50,
+          ...Object.fromEntries(
+            VOUCHER_TYPES.map((type) => [commissionFieldFor(type), defaultCommissionFor(type)])
+          ),
           minWithdrawalAmount: 10.00,
           dailyWithdrawalCap: 1000.00
         }
@@ -765,13 +767,16 @@ export const updateAffiliateConfig = async (req, res, next) => {
      }
   */
   try {
-    const { wassceNovdecCommission, beceCommission, minWithdrawalAmount, dailyWithdrawalCap } = req.body;
+    const { minWithdrawalAmount, dailyWithdrawalCap } = req.body;
 
     let existing = await prisma.affiliateConfig.findFirst();
 
     const updateData = {};
-    if (wassceNovdecCommission !== undefined) updateData.wassceNovdecCommission = parseFloat(wassceNovdecCommission);
-    if (beceCommission !== undefined) updateData.beceCommission = parseFloat(beceCommission);
+    // One commission rate per voucher type we sell
+    for (const type of VOUCHER_TYPES) {
+      const field = commissionFieldFor(type);
+      if (req.body[field] !== undefined) updateData[field] = parseFloat(req.body[field]);
+    }
     if (minWithdrawalAmount !== undefined) updateData.minWithdrawalAmount = parseFloat(minWithdrawalAmount);
     if (dailyWithdrawalCap !== undefined) updateData.dailyWithdrawalCap = parseFloat(dailyWithdrawalCap);
 
@@ -784,8 +789,12 @@ export const updateAffiliateConfig = async (req, res, next) => {
     } else {
       config = await prisma.affiliateConfig.create({
         data: {
-          wassceNovdecCommission: updateData.wassceNovdecCommission || 2.00,
-          beceCommission: updateData.beceCommission || 1.50,
+          ...Object.fromEntries(
+            VOUCHER_TYPES.map((type) => [
+              commissionFieldFor(type),
+              updateData[commissionFieldFor(type)] ?? defaultCommissionFor(type)
+            ])
+          ),
           minWithdrawalAmount: updateData.minWithdrawalAmount || 10.00,
           dailyWithdrawalCap: updateData.dailyWithdrawalCap || 1000.00
         }

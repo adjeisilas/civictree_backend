@@ -9,13 +9,9 @@ pnpm-debug.log*
 # Database dumps must never end up in an image
 backups
 
-# Tests, scratch work and manual scripts
+# Tests and scratch work
 tests
 scratch
-scripts/test_*
-scripts/send_test_webhook.js
-settle_real_partner.js
-resend_partner_settlements.js
 
 # Documentation and provider references
 *.md

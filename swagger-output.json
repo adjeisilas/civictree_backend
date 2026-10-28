@@ -35,6 +35,19 @@
         }
       }
     },
+    "/api/health/": {
+      "get": {
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
     "/api/auth/login": {
       "post": {
         "tags": [
@@ -70,6 +83,194 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login/two-factor": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Complete login with a two-factor code",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "challengeToken": {
+                    "example": "any"
+                  },
+                  "code": {
+                    "example": "any"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/two-factor": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Two-factor status",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/auth/two-factor/setup": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Start two-factor setup",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "currentPassword": {
+                    "example": "any"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/two-factor/enable": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Turn on two-factor sign-in",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "example": "any"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/two-factor/disable": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Turn off two-factor sign-in",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "currentPassword": {
+                    "example": "any"
+                  },
+                  "code": {
+                    "example": "any"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/two-factor/recovery-codes": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Get a new set of recovery codes",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "currentPassword": {
+                    "example": "any"
+                  },
+                  "code": {
+                    "example": "any"
+                  }
+                }
               }
             }
           }
@@ -2334,7 +2535,8 @@
                     "type": "string",
                     "enum": [
                       "WASSCE_NOVDEC",
-                      "BECE"
+                      "BECE",
+                      "CTVET_NABTEX"
                     ],
                     "description": "Voucher type for all rows in the file"
                   },
@@ -2389,7 +2591,8 @@
                     "type": "string",
                     "enum": [
                       "WASSCE_NOVDEC",
-                      "BECE"
+                      "BECE",
+                      "CTVET_NABTEX"
                     ],
                     "description": "Voucher type for all rows in the file"
                   },
@@ -2899,6 +3102,35 @@
         ]
       }
     },
+    "/api/vouchers/{id}/pin": {
+      "get": {
+        "tags": [
+          "Voucher Management"
+        ],
+        "summary": "Reveal a voucher PIN",
+        "description": "Returns the full PIN for one voucher. The access is recorded in the activity log.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/timetables/": {
       "get": {
         "tags": [
@@ -3060,6 +3292,9 @@
           },
           "400": {
             "description": "Bad Request"
+          },
+          "403": {
+            "description": "Forbidden"
           }
         },
         "requestBody": {
@@ -3110,16 +3345,10 @@
           "Public - USSD"
         ],
         "summary": "Handle Hubtel USSD Service Fulfillment Callback",
-        "description": "Invoked by Hubtel upon successful payment of a USSD order. Triggers order fulfillment.",
+        "description": "Invoked by Hubtel upon successful payment of a USSD order. Confirms the payment with Hubtel, then triggers order fulfillment.",
         "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "400": {
-            "description": "Bad Request"
-          },
-          "404": {
-            "description": "Not Found"
+          "403": {
+            "description": "Forbidden"
           }
         },
         "requestBody": {
@@ -3614,6 +3843,86 @@
         ]
       }
     },
+    "/api/admin/sms/contacts": {
+      "get": {
+        "tags": [
+          "SMS Campaigns"
+        ],
+        "summary": "Contact counts per voucher type, and last clearance",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "SMS Campaigns"
+        ],
+        "summary": "Clear SMS contacts (all, or one voucher type)",
+        "description": "Deletes USSD dialer records and puts order-derived contacts behind a cut-off. Orders themselves are never deleted.",
+        "parameters": [
+          {
+            "name": "voucherType",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/admin/sms/recipients/count": {
+      "get": {
+        "tags": [
+          "SMS Campaigns"
+        ],
+        "summary": "Count the recipients a bulk SMS campaign would reach",
+        "description": "",
+        "parameters": [
+          {
+            "name": "recipientType",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "voucherType",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/admin/sms/bulk/bece": {
       "post": {
         "tags": [
@@ -3772,6 +4081,45 @@
                   "recipientType",
                   "body"
                 ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/sms/bulk/ctvet-nabtex": {
+      "post": {
+        "tags": [
+          "SMS Campaigns"
+        ],
+        "summary": "Send CTVET/NABTEX bulk SMS campaign",
+        "description": "Dispatches an SMS campaign to CTVET/NABTEX customers. Division options: ALL, SUCCESSFUL, FAILED_ONLY.",
+        "responses": {
+          "default": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "recipientType": {
+                    "example": "any"
+                  },
+                  "title": {
+                    "example": "any"
+                  },
+                  "body": {
+                    "example": "any"
+                  }
+                }
               }
             }
           }
@@ -4139,6 +4487,9 @@
           },
           "400": {
             "description": "Bad Request"
+          },
+          "403": {
+            "description": "Forbidden"
           }
         },
         "requestBody": {
@@ -4181,36 +4532,10 @@
           "Public - Affiliate USSD"
         ],
         "summary": "Handle Affiliate USSD Fulfillment Callback",
-        "description": "Invoked by Hubtel upon successful payment of an affiliate USSD order. Allocates vouchers, dispatches SMS, calculates affiliate commission, and updates affiliate stats.",
+        "description": "Invoked by Hubtel upon successful payment of an affiliate USSD order. Confirms the payment with Hubtel, allocates vouchers, dispatches SMS, and credits affiliate commission.",
         "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "400": {
-            "description": "Bad Request"
-          },
-          "404": {
-            "description": "Not Found"
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "SessionId": {
-                    "example": "any"
-                  },
-                  "OrderId": {
-                    "example": "any"
-                  },
-                  "OrderInfo": {
-                    "example": "any"
-                  }
-                }
-              }
-            }
+          "403": {
+            "description": "Forbidden"
           }
         }
       }
@@ -4383,6 +4708,9 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "currentPassword": {
+                    "example": "any"
+                  },
                   "where": {
                     "example": "any"
                   }
@@ -4416,6 +4744,9 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "currentPassword": {
+                    "example": "any"
+                  },
                   "where": {
                     "example": "any"
                   }
@@ -4972,762 +5303,6 @@
                   "ussdCode": {
                     "type": "string",
                     "example": "*713*001#"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/partner/dashboard": {
-      "get": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Get Partner Dashboard Overview",
-        "description": "Retrieves live dashboard statistics for the authenticated partner.",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/partner/transactions": {
-      "get": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Get Platform Transactions Ledger",
-        "description": "Retrieves a paginated list of all partner revenue transactions.",
-        "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "voucherType",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "settlementStatus",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "search",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/partner/reports": {
-      "get": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Get Financial Reports & Analytics",
-        "description": "Retrieves interval financial reports and breakdown charts.",
-        "parameters": [
-          {
-            "name": "period",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/partner/settlements": {
-      "get": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Get Settlement / Payout History",
-        "description": "Retrieves a list of all daily automated or manual settlement disbursements.",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/partner/settlements/request": {
-      "post": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Request Payout Settlement",
-        "description": "Allows a partner to manually submit a withdrawal request.",
-        "responses": {
-          "201": {
-            "description": "Created"
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "amount": {
-                    "example": "any"
-                  },
-                  "notes": {
-                    "example": "any"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/partner/payout-accounts": {
-      "get": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Get Saved Payout Accounts",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Add New Payout Account",
-        "description": "",
-        "responses": {
-          "201": {
-            "description": "Created"
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "example": "any"
-                  },
-                  "provider": {
-                    "example": "any"
-                  },
-                  "accountNumber": {
-                    "example": "any"
-                  },
-                  "accountName": {
-                    "example": "any"
-                  },
-                  "isDefault": {
-                    "example": "any"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/partner/notifications": {
-      "get": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Get Partner Notifications",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/partner/notifications/{id}/read": {
-      "patch": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Mark Notification As Read",
-        "description": "",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/partner/notifications/read-all": {
-      "post": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Mark All Notifications As Read",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/partner/profile": {
-      "get": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Get Partner Profile",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Update Partner Profile",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "partnerName": {
-                    "example": "any"
-                  },
-                  "legalEntityName": {
-                    "example": "any"
-                  },
-                  "email": {
-                    "example": "any"
-                  },
-                  "phone": {
-                    "example": "any"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/partner/change-password": {
-      "post": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Change Partner Password",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "currentPassword": {
-                    "example": "any"
-                  },
-                  "newPassword": {
-                    "example": "any"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/partner/settings": {
-      "get": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Get Partner Settings",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Update Partner Settings",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "autoSettlementEnabled": {
-                    "example": "any"
-                  },
-                  "autoSettlementThreshold": {
-                    "example": "any"
-                  },
-                  "settlementFrequency": {
-                    "example": "any"
-                  },
-                  "defaultPayoutAccountId": {
-                    "example": "any"
-                  },
-                  "emailDailyDigest": {
-                    "example": "any"
-                  },
-                  "emailPayoutAlerts": {
-                    "example": "any"
-                  },
-                  "smsSurgeAlerts": {
-                    "example": "any"
-                  },
-                  "smsPayoutAlerts": {
-                    "example": "any"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/partner/dashboard": {
-      "get": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Get Partner Dashboard Overview",
-        "description": "Retrieves live dashboard statistics for the authenticated partner.",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/partner/transactions": {
-      "get": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Get Platform Transactions Ledger",
-        "description": "Retrieves a paginated list of all partner revenue transactions.",
-        "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "voucherType",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "settlementStatus",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "search",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/partner/reports": {
-      "get": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Get Financial Reports & Analytics",
-        "description": "Retrieves interval financial reports and breakdown charts.",
-        "parameters": [
-          {
-            "name": "period",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/partner/settlements": {
-      "get": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Get Settlement / Payout History",
-        "description": "Retrieves a list of all daily automated or manual settlement disbursements.",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/partner/settlements/request": {
-      "post": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Request Payout Settlement",
-        "description": "Allows a partner to manually submit a withdrawal request.",
-        "responses": {
-          "201": {
-            "description": "Created"
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "amount": {
-                    "example": "any"
-                  },
-                  "notes": {
-                    "example": "any"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/partner/payout-accounts": {
-      "get": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Get Saved Payout Accounts",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Add New Payout Account",
-        "description": "",
-        "responses": {
-          "201": {
-            "description": "Created"
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "example": "any"
-                  },
-                  "provider": {
-                    "example": "any"
-                  },
-                  "accountNumber": {
-                    "example": "any"
-                  },
-                  "accountName": {
-                    "example": "any"
-                  },
-                  "isDefault": {
-                    "example": "any"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/partner/notifications": {
-      "get": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Get Partner Notifications",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/partner/notifications/{id}/read": {
-      "patch": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Mark Notification As Read",
-        "description": "",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/partner/notifications/read-all": {
-      "post": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Mark All Notifications As Read",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/partner/profile": {
-      "get": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Get Partner Profile",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Update Partner Profile",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "partnerName": {
-                    "example": "any"
-                  },
-                  "legalEntityName": {
-                    "example": "any"
-                  },
-                  "email": {
-                    "example": "any"
-                  },
-                  "phone": {
-                    "example": "any"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/partner/change-password": {
-      "post": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Change Partner Password",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "currentPassword": {
-                    "example": "any"
-                  },
-                  "newPassword": {
-                    "example": "any"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/partner/settings": {
-      "get": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Get Partner Settings",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "Partner Portal"
-        ],
-        "summary": "Update Partner Settings",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "autoSettlementEnabled": {
-                    "example": "any"
-                  },
-                  "autoSettlementThreshold": {
-                    "example": "any"
-                  },
-                  "settlementFrequency": {
-                    "example": "any"
-                  },
-                  "defaultPayoutAccountId": {
-                    "example": "any"
-                  },
-                  "emailDailyDigest": {
-                    "example": "any"
-                  },
-                  "emailPayoutAlerts": {
-                    "example": "any"
-                  },
-                  "smsSurgeAlerts": {
-                    "example": "any"
-                  },
-                  "smsPayoutAlerts": {
-                    "example": "any"
                   }
                 }
               }
@@ -7750,7 +7325,7 @@
           },
           "destinationAccount": {
             "type": "string",
-            "example": "0599745043"
+            "example": "0200000000"
           },
           "accountName": {
             "type": "string",
@@ -7787,7 +7362,7 @@
           },
           "accountNumber": {
             "type": "string",
-            "example": "0599745043"
+            "example": "0200000000"
           },
           "accountName": {
             "type": "string",
@@ -7812,7 +7387,7 @@
           },
           "message": {
             "type": "string",
-            "example": "Your daily settlement of GHS 142.50 for 95 vouchers sold today has been processed to 0599745043."
+            "example": "Your daily settlement of GHS 142.50 for 95 vouchers sold today has been processed to 0200000000."
           },
           "type": {
             "type": "string",
@@ -7857,7 +7432,7 @@
           },
           "phone": {
             "type": "string",
-            "example": "0599745043"
+            "example": "0200000000"
           },
           "contractRef": {
             "type": "string",

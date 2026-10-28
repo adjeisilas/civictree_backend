@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { VOUCHER_TYPES } from '../utils/voucher/voucherTypes.js';
 import { MAX_VOUCHERS_PER_ORDER } from '../utils/order/orderHelpers.js';
 
 // ---- Shared field rules -------------------------------------------------------
@@ -126,7 +127,7 @@ export const affiliateRegisterSchema = z
 // ---- Orders -------------------------------------------------------------------
 
 export const createOrderSchema = z.object({
-  voucherType: z.enum(['WASSCE_NOVDEC', 'BECE'], { error: 'Invalid voucher type. Must be WASSCE_NOVDEC or BECE.' }),
+  voucherType: z.enum(VOUCHER_TYPES, { error: `Invalid voucher type. Must be one of ${VOUCHER_TYPES.join(', ')}.` }),
   quantity: z.coerce
     .number({ error: 'Quantity must be a number' })
     .int('Quantity must be a whole number')

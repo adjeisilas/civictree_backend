@@ -61,6 +61,7 @@ only switch on there.
 | `CORS_ORIGINS` | Comma-separated list of browser origins allowed to call the API |
 | `CLOUDINARY_*` | Timetable file uploads |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Web push (`npm run generate-vapid`) |
+| `EMAIL_USER` | The VAPID contact address. **Web push is disabled without it** — it previously fell back to a hardcoded personal inbox, which has been removed. |
 
 ### Optional, with defaults
 
@@ -143,6 +144,23 @@ npm run db:migrate            # creates prisma/migrations/<timestamp>_<name>/
 npm run db:deploy
 ```
 
+### Generating a migration on Windows
+
+`prisma migrate diff` reads the database it is pointed at, and MySQL on Windows
+lowercases table names. A migration generated here therefore comes out as:
+
+```sql
+ALTER TABLE `order` ...      -- fails on Linux
+ALTER TABLE `Order` ...      -- what 0_init actually created
+```
+
+which fails on the Linux server. The CTVET/NABTEX migration hit exactly this and
+had to be rewritten in schema case.
+
+So: after generating a migration on Windows, check the table names against
+`prisma/schema.prisma` and fix the casing. CI applies every migration to an
+empty MySQL on Linux, which is what catches it — do not skip that signal.
+
 **Never run `prisma db push` against production.** It diffs and applies without
 a migration file, so there is no record of what changed and no way to replay it
 on another environment. `npm run db:push` is kept only for throwaway databases.
@@ -224,6 +242,58 @@ tries to seed a server from a developer's laptop.
 
 ---
 
+## 4a. The USSD menu
+
+Numbers are derived from the voucher types in
+`utils/voucher/voucherTypes.js`: buying occupies 1..N and the fixed options
+follow. Adding CTVET/NABTEX in October 2026 therefore moved them:
+
+| Option | Before | Now |
+|---|---|---|
+| 1 | Buy BECE | Buy BECE |
+| 2 | Buy WASSCE/NOVDEC | Buy WASSCE/NOVDEC |
+| 3 | Transactions | **Buy CTVET/NABTEX** |
+| 4 | Release Dates | Transactions |
+| 5 | Support | Release Dates |
+| 6 | — | Support |
+
+**Anything that tells customers which number to press needs updating** —
+printed material, posters, SMS templates, the website walkthrough (that one is
+generated from the shared list, so it is already correct) and any support
+script.
+
+The screen is 152 characters with three types, against Hubtel's limit of roughly
+160. A fourth type, or a long affiliate business name in the header, will
+overflow and need the lines shortened.
+
+## 4b. Clearing the SMS contact list
+
+Admin -> SMS -> Clear Contacts. One button per voucher type plus one for all of
+them, each showing its current contact count and when it was last cleared.
+
+There is no contact table. Recipients are derived from two sources, and the
+clearance treats them differently:
+
+| Source | What a clearance does |
+|---|---|
+| `UssdDialer` | **Deleted.** `UssdDialer` is unique on (phoneNumber, voucherType) and the tracker only inserts when no row exists, so the row has to go for a returning caller to register again. |
+| `Order.phoneNumber` | **Kept.** Orders are revenue records. A cut-off is recorded in `SmsContactClearance` instead, and those contacts rejoin campaigns when that customer next orders. |
+
+So the count drops to zero and fills up again, with the books untouched. Every
+clearance is logged (`SMS_CONTACTS_CLEARED`) with before/after counts, notifies
+the other admins, and records who did it.
+
+Clearing one product needs a single confirmation; clearing everything requires
+typing `ALL`. A per-type clearance also removes those contacts from the general
+campaign, so clearing BECE does not leave BECE buyers reachable via `ALL`.
+
+```bash
+# What the buttons call
+GET    /api/admin/sms/contacts                       # counts per type
+DELETE /api/admin/sms/contacts?voucherType=BECE      # one product
+DELETE /api/admin/sms/contacts                       # everything
+```
+
 ## 5. Monitoring
 
 Scheduled jobs, all in `Africa/Accra` and started by `utils/cron/cronJobs.js`:
@@ -275,17 +345,61 @@ check the callback logs for that reference.
 4. `SECRET_ENC_KEY`: see the warning in section 1 — re-encrypt, do not just swap.
 5. Run `gitleaks detect` over the full history, not just the current tree.
 
-### An admin is locked out
+### Nobody can sign in as an admin
 
-Lockout is deliberate after repeated failures. Clear it for one account:
+The self-service reset goes by SMS only (email delivery is off), so it needs a
+phone number on the account and working Hubtel SMS credentials. **Put a phone
+number on every admin account** — it is the difference between a self-service
+reset and the database surgery below.
+
+When that is not available, set the password directly. It must be a bcrypt hash
+at cost factor 12: write plain text into that column and the sign-in fails with
+"invalid credentials" and no clue why.
+
+```bash
+# 1. On the server, generate the hash (quote the password so the shell leaves it alone)
+node -e "require('bcryptjs').hash('the-new-password',12).then(console.log)"
+```
+
+```sql
+-- 2. Set it, and clear the lockout that would otherwise still block the sign-in
+UPDATE `User`
+   SET password = '<the $2b$12$... hash from step 1>',
+       failedLoginAttempts = 0,
+       lockedUntil = NULL,
+       firstTimeLogin = 0
+ WHERE email = '…' AND role = 'ADMIN';
+```
+
+Forgotten which address the account uses:
+
+```sql
+SELECT email, fullName, isActive, twoFactorEnabled, failedLoginAttempts, lockedUntil
+  FROM `User` WHERE role = 'ADMIN';
+```
+
+Two things to know about doing it this way:
+
+- **It leaves no audit trail.** Nothing records that an admin password was
+  changed outside the application, so a recovery nobody authorised is invisible
+  afterwards. Check the password is changed again from inside the app once the
+  person is back in.
+- **Shell or database access to the server is equivalent to admin access to the
+  platform.** That is inherent — anyone who can write to the `User` table can do
+  this. Grant it accordingly.
+
+### An admin is locked out but knows their password
+
+Lockout is deliberate after repeated failures, and expires on its own. To clear
+it immediately:
 
 ```sql
 UPDATE `User` SET failedLoginAttempts = 0, lockedUntil = NULL WHERE email = '…';
 ```
 
-Lost their authenticator: they use a recovery code. Out of recovery codes, clear
-two-factor so they can set it up again — and confirm who you are talking to
-first, because this step removes a factor:
+Lost their authenticator: they use a recovery code. Out of recovery codes, use
+`--disable-2fa` above, or by hand — and confirm who you are talking to first,
+because this removes a factor:
 
 ```sql
 UPDATE `User` SET twoFactorEnabled = 0, twoFactorSecret = NULL WHERE email = '…';

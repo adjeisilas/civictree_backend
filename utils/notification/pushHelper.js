@@ -1,8 +1,10 @@
 import webpush from 'web-push';
 import config, { prisma } from '../../config/config.js';
 
-// Configure Web Push with VAPID keys if they are present
-if (config.vapid.publicKey && config.vapid.privateKey) {
+// Configure Web Push only when the keys AND a contact subject are present.
+// VAPID requires a subject and web-push throws on import without one, so a
+// missing EMAIL_USER disables push rather than taking the whole app down.
+if (config.vapid.publicKey && config.vapid.privateKey && config.vapid.email) {
   webpush.setVapidDetails(
     config.vapid.email,
     config.vapid.publicKey,

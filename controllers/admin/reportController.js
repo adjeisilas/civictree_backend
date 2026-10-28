@@ -1,4 +1,5 @@
 import { prisma } from '../../config/config.js';
+import { VOUCHER_TYPES } from '../../utils/voucher/voucherTypes.js';
 import { AppError } from '../../utils/error/AppError.js';
 
 /**
@@ -123,12 +124,17 @@ export const getReportStats = async (req, res, next) => {
 
       // A. Revenue breakdown (Successful orders only)
       const successfulOrders = monthOrders.filter(o => o.paymentStatus === 'SUCCESS');
-      const wassceNovdecRevenue = successfulOrders
-        .filter(o => o.voucherType === 'WASSCE_NOVDEC')
-        .reduce((sum, o) => sum + Number(o.amount), 0);
-      const beceRevenue = successfulOrders
-        .filter(o => o.voucherType === 'BECE')
-        .reduce((sum, o) => sum + Number(o.amount), 0);
+      const revenueByType = Object.fromEntries(
+        VOUCHER_TYPES.map((type) => [
+          type,
+          Number(
+            successfulOrders
+              .filter(o => o.voucherType === type)
+              .reduce((sum, o) => sum + Number(o.amount), 0)
+              .toFixed(2)
+          )
+        ])
+      );
 
       // B. Success vs Failure rate trends
       const total = monthOrders.length;
@@ -161,10 +167,7 @@ export const getReportStats = async (req, res, next) => {
       return {
         month: m.name,
         year: m.year,
-        revenue: {
-          WASSCE_NOVDEC: Number(wassceNovdecRevenue.toFixed(2)),
-          BECE: Number(beceRevenue.toFixed(2))
-        },
+        revenue: revenueByType,
         orderRates: {
           successRate,
           failureRate

@@ -1,5 +1,6 @@
 import config, { prisma } from '../../config/config.js';
 import { AppError } from '../../utils/error/AppError.js';
+import { VOUCHER_TYPES, displayNameFor, priceFieldFor, limitFieldFor, releaseDateFieldFor } from '../../utils/voucher/voucherTypes.js';
 import { readSpreadsheetRows } from '../../utils/file/spreadsheet.js';
 import { encryptPin, readPin, maskPin, withMaskedPin } from '../../utils/voucher/voucherPin.js';
 import { logActivity } from '../../utils/activityLog/activityLogger.js';
@@ -38,7 +39,7 @@ export const createVoucherConfig = async (req, res, next) => {
      }
   */
   try {
-    const { currency, wassceNovdecPrice, wassceNovdecLimit, becePrice, beceLimit } = req.body;
+    const { currency } = req.body;
 
     // Check if configuration already exists
     const existingConfig = await prisma.voucherConfig.findFirst();
@@ -47,8 +48,7 @@ export const createVoucherConfig = async (req, res, next) => {
     }
 
     if (
-      wassceNovdecPrice < 0 || wassceNovdecLimit < 0 ||
-      becePrice < 0 || beceLimit < 0
+      VOUCHER_TYPES.some((type) => Number(req.body[priceFieldFor(type)]) < 0 || Number(req.body[limitFieldFor(type)]) < 0)
     ) {
       throw new AppError('Prices and stock limits must be non-negative values.', 400);
     }
@@ -56,10 +56,12 @@ export const createVoucherConfig = async (req, res, next) => {
     const config = await prisma.voucherConfig.create({
       data: {
         currency: currency || 'GHS',
-        wassceNovdecPrice,
-        wassceNovdecLimit: parseInt(wassceNovdecLimit, 10),
-        becePrice,
-        beceLimit: parseInt(beceLimit, 10)
+        ...Object.fromEntries(
+          VOUCHER_TYPES.flatMap((type) => [
+            [priceFieldFor(type), Number(req.body[priceFieldFor(type)])],
+            [limitFieldFor(type), parseInt(req.body[limitFieldFor(type)], 10)]
+          ])
+        )
       }
     });
 
@@ -72,7 +74,7 @@ export const createVoucherConfig = async (req, res, next) => {
 
     notifyAllAdmins({
       title: 'Voucher Price Config Created',
-      message: `Pricing set for WASSCE/NOVDEC (GHS ${wassceNovdecPrice}) and BECE (GHS ${becePrice}) by ${req.user.name || 'an Admin'}.`,
+      message: `Pricing set (${VOUCHER_TYPES.map((type) => `${displayNameFor(type)} GHS ${req.body[priceFieldFor(type)]}`).join(', ')}) by ${req.user.name || 'an Admin'}.`,
       type: 'VOUCHER',
       sendPush: false
     }).catch(err => console.error('Failed to notify admins of config creation:', err));
@@ -155,39 +157,35 @@ export const updateVoucherConfig = async (req, res, next) => {
       throw new AppError('No configuration found. Please create one first.', 404);
     }
 
-    const { 
-      currency, 
-      wassceNovdecPrice, 
-      wassceNovdecLimit, 
-      becePrice, 
-      beceLimit, 
-      wassceNovdecReleaseDate,
-      beceReleaseDate
-    } = req.body;
+    const { currency } = req.body;
 
     const updateData = {};
     if (currency) updateData.currency = currency;
-    if (wassceNovdecPrice !== undefined) {
-      if (wassceNovdecPrice < 0) throw new AppError('WASSCE/NOVDEC price must be positive.', 400);
-      updateData.wassceNovdecPrice = wassceNovdecPrice;
+    // Prices and stock thresholds, one pair per voucher type we sell
+    for (const type of VOUCHER_TYPES) {
+      const priceField = priceFieldFor(type);
+      const limitField = limitFieldFor(type);
+
+      if (req.body[priceField] !== undefined) {
+        if (Number(req.body[priceField]) < 0) {
+          throw new AppError(`${displayNameFor(type)} price must be positive.`, 400);
+        }
+        updateData[priceField] = Number(req.body[priceField]);
+      }
+      if (req.body[limitField] !== undefined) {
+        if (Number(req.body[limitField]) < 0) {
+          throw new AppError(`${displayNameFor(type)} limit must be positive.`, 400);
+        }
+        updateData[limitField] = parseInt(req.body[limitField], 10);
+      }
     }
-    if (wassceNovdecLimit !== undefined) {
-      if (wassceNovdecLimit < 0) throw new AppError('WASSCE/NOVDEC limit must be positive.', 400);
-      updateData.wassceNovdecLimit = parseInt(wassceNovdecLimit, 10);
-    }
-    if (becePrice !== undefined) {
-      if (becePrice < 0) throw new AppError('BECE price must be positive.', 400);
-      updateData.becePrice = becePrice;
-    }
-    if (beceLimit !== undefined) {
-      if (beceLimit < 0) throw new AppError('BECE limit must be positive.', 400);
-      updateData.beceLimit = parseInt(beceLimit, 10);
-    }
-    if (wassceNovdecReleaseDate !== undefined) {
-      updateData.wassceNovdecReleaseDate = wassceNovdecReleaseDate ? new Date(wassceNovdecReleaseDate) : null;
-    }
-    if (beceReleaseDate !== undefined) {
-      updateData.beceReleaseDate = beceReleaseDate ? new Date(beceReleaseDate) : null;
+
+    // Results release dates, one per voucher type
+    for (const type of VOUCHER_TYPES) {
+      const field = releaseDateFieldFor(type);
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field] ? new Date(req.body[field]) : null;
+      }
     }
 
     const updatedConfig = await prisma.voucherConfig.update({
@@ -255,14 +253,13 @@ export const updateVoucherReleaseDates = async (req, res, next) => {
       throw new AppError('No configuration found. Please create one first.', 404);
     }
 
-    const { wassceNovdecReleaseDate, beceReleaseDate } = req.body;
-
     const updateData = {};
-    if (wassceNovdecReleaseDate !== undefined) {
-      updateData.wassceNovdecReleaseDate = wassceNovdecReleaseDate ? new Date(wassceNovdecReleaseDate) : null;
-    }
-    if (beceReleaseDate !== undefined) {
-      updateData.beceReleaseDate = beceReleaseDate ? new Date(beceReleaseDate) : null;
+
+    for (const type of VOUCHER_TYPES) {
+      const field = releaseDateFieldFor(type);
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field] ? new Date(req.body[field]) : null;
+      }
     }
 
     const updatedConfig = await prisma.voucherConfig.update({
@@ -369,7 +366,7 @@ export const uploadVouchersBulk = async (req, res, next) => {
                     properties: {
                         type: {
                             type: "string",
-                            enum: ["WASSCE_NOVDEC", "BECE"],
+                            enum: ["WASSCE_NOVDEC", "BECE", "CTVET_NABTEX"],
                             description: "Voucher type for all rows in the file"
                         },
                         file: {
@@ -398,10 +395,10 @@ export const uploadVouchersBulk = async (req, res, next) => {
       throw new AppError('Voucher type is required.', 400);
     }
 
-    const validTypes = new Set(['WASSCE_NOVDEC', 'BECE']);
+    const validTypes = new Set(VOUCHER_TYPES);
     const uppercaseType = type.toUpperCase();
     if (!validTypes.has(uppercaseType)) {
-      throw new AppError('Invalid voucher type. Must be WASSCE_NOVDEC or BECE.', 400);
+      throw new AppError(`Invalid voucher type. Must be one of ${VOUCHER_TYPES.join(', ')}.`, 400);
     }
 
     if (!req.file) {
@@ -632,7 +629,7 @@ export const checkVouchersBulkDuplicates = async (req, res, next) => {
                     properties: {
                         type: {
                             type: "string",
-                            enum: ["WASSCE_NOVDEC", "BECE"],
+                            enum: ["WASSCE_NOVDEC", "BECE", "CTVET_NABTEX"],
                             description: "Voucher type for all rows in the file"
                         },
                         file: {
@@ -661,10 +658,10 @@ export const checkVouchersBulkDuplicates = async (req, res, next) => {
       throw new AppError('Voucher type is required.', 400);
     }
 
-    const validTypes = new Set(['WASSCE_NOVDEC', 'BECE']);
+    const validTypes = new Set(VOUCHER_TYPES);
     const uppercaseType = type.toUpperCase();
     if (!validTypes.has(uppercaseType)) {
-      throw new AppError('Invalid voucher type. Must be WASSCE_NOVDEC or BECE.', 400);
+      throw new AppError(`Invalid voucher type. Must be one of ${VOUCHER_TYPES.join(', ')}.`, 400);
     }
 
     if (!req.file) {
@@ -862,10 +859,10 @@ export const uploadVoucherSingle = async (req, res, next) => {
       throw new AppError('Voucher type, serialNumber, and pin are required.', 400);
     }
 
-    const validTypes = new Set(['WASSCE_NOVDEC', 'BECE']);
+    const validTypes = new Set(VOUCHER_TYPES);
     const upperType = type.toUpperCase();
     if (!validTypes.has(upperType)) {
-      throw new AppError('Invalid voucher type. Must be WASSCE_NOVDEC or BECE.', 400);
+      throw new AppError(`Invalid voucher type. Must be one of ${VOUCHER_TYPES.join(', ')}.`, 400);
     }
 
     // Check serial uniqueness
@@ -1101,9 +1098,9 @@ export const updateVoucher = async (req, res, next) => {
 
     const updateData = {};
     if (type) {
-      const validTypes = new Set(['WASSCE_NOVDEC', 'BECE']);
+      const validTypes = new Set(VOUCHER_TYPES);
       if (!validTypes.has(type.toUpperCase())) {
-        throw new AppError('Invalid voucher type. Must be WASSCE_NOVDEC or BECE.', 400);
+        throw new AppError(`Invalid voucher type. Must be one of ${VOUCHER_TYPES.join(', ')}.`, 400);
       }
       updateData.type = type.toUpperCase();
     }
@@ -1433,10 +1430,11 @@ export const getVoucherOverview = async (req, res, next) => {
       }
     });
 
-    // Initialize stats structure
+    // A bucket per voucher type we sell, so a new type appears without an edit
     const stats = {
-      WASSCE_NOVDEC: { available: 0, sold: 0, total: 0 },
-      BECE: { available: 0, sold: 0, total: 0 },
+      ...Object.fromEntries(
+        VOUCHER_TYPES.map((type) => [type, { available: 0, sold: 0, total: 0 }])
+      ),
       totals: { available: 0, sold: 0, total: 0 }
     };
 

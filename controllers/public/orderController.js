@@ -1,4 +1,5 @@
 import { prisma } from '../../config/config.js';
+import { commissionFrom, displayNameFor, resultsUrlFor } from '../../utils/voucher/voucherTypes.js';
 import { AppError } from '../../utils/error/AppError.js';
 import { logActivity } from '../../utils/activityLog/activityLogger.js';
 import { initiateHubtelCheckout } from '../../utils/payment/hubtelHelper.js';
@@ -185,8 +186,11 @@ const buildVoucherSms = (order, vouchers) => {
     .map((v, i) => `${i + 1}. Serial Number: ${v.serialNumber}\n   PIN: ${readPin(v.pin)}`)
     .join('\n');
 
-  const checkLink = order.voucherType === 'BECE' ? 'https://eresults.waecgh.org/' : 'https://ghana.waecdirect.org/';
-  return `CivicTree: Thank you! Order: ${order.id}.\nHere are your ${order.voucherType} voucher codes:\n${voucherListStr}\nCheck results here: ${checkLink}`;
+  // A type with no configured portal gets no link rather than another body's
+  const checkLink = resultsUrlFor(order.voucherType);
+  const linkLine = checkLink ? `\nCheck results here: ${checkLink}` : '';
+
+  return `CivicTree: Thank you! Order: ${order.id}.\nHere are your ${displayNameFor(order.voucherType)} voucher codes:\n${voucherListStr}${linkLine}`;
 };
 
 /**
@@ -194,10 +198,10 @@ const buildVoucherSms = (order, vouchers) => {
  */
 const creditAffiliateCommission = async (order, req) => {
   const affiliateConfig = await prisma.affiliateConfig.findFirst();
-  const wassceComm = affiliateConfig ? Number(affiliateConfig.wassceNovdecCommission) : 2.00;
-  const beceComm = affiliateConfig ? Number(affiliateConfig.beceCommission) : 1.50;
 
-  const commissionPerUnit = order.voucherType === 'BECE' ? beceComm : wassceComm;
+  // Looked up per type. The previous two-way check paid any type that was not
+  // BECE at the WASSCE rate, so a third type would have been mispriced.
+  const commissionPerUnit = commissionFrom(affiliateConfig, order.voucherType);
   const commissionAmount = commissionPerUnit * order.quantity;
 
   // Record Affiliate Commission (Unique per order)

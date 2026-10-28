@@ -29,6 +29,14 @@ const { default: affiliateUssdRouter } = await import('../../routes/public/affil
 const { completeOrderFulfillment } = await import('../../controllers/public/orderController.js');
 const { reconcilePendingPayments } = await import('../../utils/cron/cronJobs.js');
 
+const { mainMenu } = await import('../../utils/ussd/ussdMenu.js');
+
+/**
+ * The Transactions option sits after the buy options, so its number moves when a
+ * voucher type is added. Derived rather than hardcoded for that reason.
+ */
+const TRANSACTIONS_KEY = mainMenu({}).transactions;
+
 let app;
 
 const post = (path, body, ip = HUBTEL_IP) => app.post(path, body, ip);
@@ -316,7 +324,7 @@ describe('main USSD menu', () => {
 
     const attacker = { sessionId: 's-attacker', mobile: '233241111111' };
     const menu = await ussdStep(path, { ...attacker, type: 'Initiation', message: '*713#' });
-    const list = await ussdStep(path, { ...attacker, message: '3', clientState: menu.body.ClientState });
+    const list = await ussdStep(path, { ...attacker, message: TRANSACTIONS_KEY, clientState: menu.body.ClientState });
     assert.equal(list.body.Type, 'release');
     assert.match(list.body.Message, /No transactions found/);
 
@@ -326,7 +334,7 @@ describe('main USSD menu', () => {
     // The real owner can still see them
     const owner = { sessionId: 's-owner', mobile: '233209999999' };
     const ownerMenu = await ussdStep(path, { ...owner, type: 'Initiation', message: '*713#' });
-    const ownerList = await ussdStep(path, { ...owner, message: '3', clientState: ownerMenu.body.ClientState });
+    const ownerList = await ussdStep(path, { ...owner, message: TRANSACTIONS_KEY, clientState: ownerMenu.body.ClientState });
     const ownerView = await ussdStep(path, { ...owner, message: '1', clientState: ownerList.body.ClientState });
     assert.match(ownerView.body.Message, /PIN/);
   });

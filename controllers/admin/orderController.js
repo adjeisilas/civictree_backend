@@ -1,5 +1,6 @@
 import { prisma } from '../../config/config.js';
 import { AppError } from '../../utils/error/AppError.js';
+import { VOUCHER_TYPES } from '../../utils/voucher/voucherTypes.js';
 import { logActivity } from '../../utils/activityLog/activityLogger.js';
 import { verifyOrderPayment } from '../../utils/payment/verifyOrderPayment.js';
 import { applyPaymentVerification } from '../public/orderController.js';
@@ -276,6 +277,7 @@ export const getOrders = async (req, res, next) => {
       const vt = rawVoucherType.trim().toUpperCase().replace(/\s+/g, '_');
       if (!['ALL', 'ALL_CATEGORIES', 'ALL_TYPES', 'ALL_VOUCHERS', 'NONE', ''].includes(vt)) {
         if (vt.includes('WASSCE') || vt.includes('NOVDEC')) normVoucherType = 'WASSCE_NOVDEC';
+        else if (vt.includes('CTVET') || vt.includes('NABTEX')) normVoucherType = 'CTVET_NABTEX';
         else if (vt.includes('BECE')) normVoucherType = 'BECE';
         else normVoucherType = vt;
       }
@@ -484,6 +486,12 @@ export const getOrderStats = async (req, res, next) => {
         totalOrdersFailed
       },
       byVoucherType: {
+        ...Object.fromEntries(
+          VOUCHER_TYPES.map((type) => [
+            type,
+            typeGroups.find(g => g.voucherType === type)?._sum.quantity || 0
+          ])
+        ),
         WASSCE_NOVDEC: typeGroups.find(g => g.voucherType === 'WASSCE_NOVDEC')?._sum.quantity || 0,
         BECE: typeGroups.find(g => g.voucherType === 'BECE')?._sum.quantity || 0
       },

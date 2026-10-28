@@ -48,9 +48,9 @@ const app = express();
 // Hubtel IP checks and activity logs depend on this. Set TRUST_PROXY=0 if the app is reached directly.
 const trustProxy = process.env.TRUST_PROXY ?? '1';
 const parseTrustProxy = (value) => {
-  if (/^\d+$/.test(value)) return parseInt(value, 10);
-  if (value === 'true' || value === 'false') return value === 'true';
-  return value; // e.g. 'loopback' or a list of proxy IPs
+    if (/^\d+$/.test(value)) return parseInt(value, 10);
+    if (value === 'true' || value === 'false') return value === 'true';
+    return value; // e.g. 'loopback' or a list of proxy IPs
 };
 app.set('trust proxy', parseTrustProxy(trustProxy));
 
@@ -180,8 +180,8 @@ app.get('/', (req, res) => {
         version: '1.0.0',
         data: {
             timestamp: new Date().toISOString(),
-             uptime: process.uptime(),
-             environment: process.env.NODE_ENV || 'Production',
+            uptime: process.uptime(),
+            environment: process.env.NODE_ENV || 'Production',
         }
     });
 });

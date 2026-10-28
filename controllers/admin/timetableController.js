@@ -1,5 +1,6 @@
 import { prisma } from '../../config/config.js';
 import { AppError } from '../../utils/error/AppError.js';
+import { VOUCHER_TYPES, displayNameFor } from '../../utils/voucher/voucherTypes.js';
 import { logActivity } from '../../utils/activityLog/activityLogger.js';
 import { uploadTimetableDocumentToCloudinary, formatFileSize } from '../../utils/upload/cloudinaryHelper.js';
 
@@ -83,8 +84,8 @@ export const updateTimetable = async (req, res, next) => {
 
     // Validate type enum
     const normalizedType = type ? type.toUpperCase() : '';
-    if (!['BECE', 'WASSCE_NOVDEC'].includes(normalizedType)) {
-      throw new AppError('Invalid timetable type. Must be BECE or WASSCE_NOVDEC.', 400);
+    if (!VOUCHER_TYPES.includes(normalizedType)) {
+      throw new AppError(`Invalid timetable type. Must be one of ${VOUCHER_TYPES.join(', ')}.`, 400);
     }
 
     const existingTimetable = await prisma.timetable.findUnique({
@@ -93,7 +94,7 @@ export const updateTimetable = async (req, res, next) => {
 
     const { title, examYear, startDate, description, isPublished } = req.body;
 
-    const defaultTitle = normalizedType === 'BECE' ? "BECE '26 Timetable" : "WASSCE '26 Timetable";
+    const defaultTitle = `${displayNameFor(normalizedType)} '26 Timetable`;
     const updateData = {};
 
     if (title !== undefined) updateData.title = title.trim();
@@ -149,7 +150,7 @@ export const updateTimetable = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      message: `${normalizedType === 'WASSCE_NOVDEC' ? 'WASSCE / NOVDEC' : normalizedType} timetable updated successfully.`,
+      message: `${displayNameFor(normalizedType)} timetable updated successfully.`,
       data: timetable
     });
   } catch (error) {

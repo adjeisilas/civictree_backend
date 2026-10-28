@@ -1,12 +1,14 @@
 import { prisma } from '../../config/config.js';
 import { AppError } from '../../utils/error/AppError.js';
+import { VOUCHER_TYPES, displayNameFor } from '../../utils/voucher/voucherTypes.js';
 import { sendSMS, sendBatchSMS } from '../../utils/sms/smsHelper.js';
 import { logActivity } from '../../utils/activityLog/activityLogger.js';
 import { notifyAllAdmins } from '../../utils/notification/pushHelper.js';
 import { buildSmsRecipients, RECIPIENT_TYPES } from '../../utils/sms/smsRecipients.js';
+import { clearSmsContacts, smsContactSummary } from '../../utils/sms/smsContacts.js';
 
 /**
- * Helper handler to process bulk SMS campaigns segmented by VoucherType (BECE vs WASSCE_NOVDEC)
+ * Helper handler to process bulk SMS campaigns segmented by VoucherType
  */
 const executeBulkSMSByVoucherType = async ({ voucherType, recipientType, title, body, req, res, next }) => {
   try {
@@ -71,7 +73,7 @@ const executeBulkSMSByVoucherType = async ({ voucherType, recipientType, title, 
     });
 
     notifyAllAdmins({
-      title: `${voucherType === 'BECE' ? 'BECE' : 'WASSCE'} Bulk SMS Sent`,
+      title: `${displayNameFor(voucherType)} Bulk SMS Sent`,
       message: `${voucherType} SMS campaign (${upperType}) was sent to ${recipients.length} customers by ${req.user.fullName || req.user.email || 'an Admin'}.`,
       type: 'SMS',
       sendPush: false
@@ -260,16 +262,25 @@ export const sendBulkSMS = async (req, res, next) => {
     // per-product handler understands - it rejected "BECE" outright before.
     // The request object itself is passed along: spreading it would drop the
     // prototype getters (req.ip among them) that activity logging relies on.
-    if (['BECE', 'BECE_ONLY', 'WASSCE_NOVDEC', 'WASSCE_NOVDEC_ONLY'].includes(upperType)) {
+    const legacyProduct = VOUCHER_TYPES.find(
+      (type) => upperType === type || upperType === `${type}_ONLY`
+    );
+    if (legacyProduct) {
       req.body.recipientType = 'ALL';
-      return upperType.startsWith('BECE')
-        ? sendBECEBulkSMS(req, res, next)
-        : sendWASSCEBulkSMS(req, res, next);
+      return executeBulkSMSByVoucherType({
+        voucherType: legacyProduct,
+        recipientType: 'ALL',
+        title,
+        body,
+        req,
+        res,
+        next
+      });
     }
 
     if (!RECIPIENT_TYPES.includes(upperType)) {
       throw new AppError(
-        `Invalid recipientType. Must be ${RECIPIENT_TYPES.join(', ')}, BECE, or WASSCE_NOVDEC.`,
+        `Invalid recipientType. Must be ${[...RECIPIENT_TYPES, ...VOUCHER_TYPES].join(', ')}.`,
         400
       );
     }
@@ -446,6 +457,23 @@ export const sendSingleSMS = async (req, res, next) => {
   }
 };
 
+export const sendCtvetNabtexBulkSMS = async (req, res, next) => {
+  // #swagger.tags = ['SMS Campaigns']
+  // #swagger.summary = 'Send CTVET/NABTEX bulk SMS campaign'
+  // #swagger.description = 'Dispatches an SMS campaign to CTVET/NABTEX customers. Division options: ALL, SUCCESSFUL, FAILED_ONLY.'
+  // #swagger.security = [{"bearerAuth": []}]
+  const { recipientType, title, body } = req.body;
+  return executeBulkSMSByVoucherType({
+    voucherType: 'CTVET_NABTEX',
+    recipientType,
+    title,
+    body,
+    req,
+    res,
+    next
+  });
+};
+
 /**
  * Reports how many people a campaign would reach, using the same builder the
  * send path uses — so the figure the admin approves is the list that goes out.
@@ -466,8 +494,8 @@ export const getBulkSMSRecipientCount = async (req, res, next) => {
     // Omitted means every product; anything else must name a real one
     let scopedVoucherType = null;
     if (voucherType && voucherType !== 'ALL') {
-      if (!['BECE', 'WASSCE_NOVDEC'].includes(voucherType)) {
-        throw new AppError('Invalid voucherType. Must be BECE, WASSCE_NOVDEC, or omitted.', 400);
+      if (!VOUCHER_TYPES.includes(voucherType)) {
+        throw new AppError(`Invalid voucherType. Must be one of ${VOUCHER_TYPES.join(', ')}, or omitted.`, 400);
       }
       scopedVoucherType = voucherType;
     }
@@ -493,5 +521,89 @@ export const getBulkSMSRecipientCount = async (req, res, next) => {
   } catch (error) {
     if (error instanceof AppError) return next(error);
     return next(new AppError('Could not calculate the recipient count.', 500));
+  }
+};
+
+/**
+ * Per-type contact counts and when each was last cleared, for the admin screen.
+ */
+export const getSmsContactSummary = async (req, res, next) => {
+  // #swagger.tags = ['SMS Campaigns']
+  // #swagger.summary = 'Contact counts per voucher type, and last clearance'
+  // #swagger.security = [{"bearerAuth": []}]
+  try {
+    const summary = await smsContactSummary();
+    return res.status(200).json({
+      success: true,
+      status: 200,
+      message: 'Contact summary calculated.',
+      data: summary
+    });
+  } catch (error) {
+    if (error instanceof AppError) return next(error);
+    return next(new AppError('Could not load the contact summary.', 500));
+  }
+};
+
+/**
+ * Clears the SMS contact list so new contacts can accumulate.
+ *
+ * Pass ?voucherType= to clear one product, or omit it to clear every type.
+ * USSD dialer rows are deleted; orders are kept and their contacts are put
+ * behind a cut-off. Nothing financial is removed.
+ */
+export const clearSmsContactList = async (req, res, next) => {
+  // #swagger.tags = ['SMS Campaigns']
+  // #swagger.summary = 'Clear SMS contacts (all, or one voucher type)'
+  // #swagger.description = 'Deletes USSD dialer records and puts order-derived contacts behind a cut-off. Orders themselves are never deleted.'
+  // #swagger.security = [{"bearerAuth": []}]
+  try {
+    const { voucherType } = req.query;
+
+    let scopedVoucherType = null;
+    if (voucherType && voucherType !== 'ALL') {
+      if (!VOUCHER_TYPES.includes(voucherType)) {
+        throw new AppError(`Invalid voucherType. Must be one of ${VOUCHER_TYPES.join(', ')}, ALL, or omitted.`, 400);
+      }
+      scopedVoucherType = voucherType;
+    }
+
+    const result = await clearSmsContacts({
+      voucherType: scopedVoucherType,
+      userId: req.user.id
+    });
+
+    const label = scopedVoucherType ? displayNameFor(scopedVoucherType) : 'all voucher types';
+
+    logActivity({
+      userId: req.user.id,
+      action: 'SMS_CONTACTS_CLEARED',
+      details: {
+        voucherType: scopedVoucherType,
+        contactsBefore: result.contactsBefore,
+        contactsAfter: result.contactsAfter,
+        dialersDeleted: result.dialersDeleted,
+        ordersExcluded: result.ordersExcluded
+      },
+      req
+    });
+
+    notifyAllAdmins({
+      title: 'SMS Contacts Cleared',
+      message: `${req.user.fullName || req.user.email || 'An admin'} cleared the SMS contact list for ${label}. ${result.contactsBefore} contact(s) removed; orders were not deleted.`,
+      type: 'SMS',
+      sendPush: false
+    }).catch(err => console.error('Failed to notify admins of contact clearance:', err));
+
+    return res.status(200).json({
+      success: true,
+      status: 200,
+      message: `Cleared ${result.contactsBefore} contact(s) for ${label}. New contacts will start collecting from now.`,
+      data: result
+    });
+  } catch (error) {
+    if (error instanceof AppError) return next(error);
+    if (/Unknown voucher type/.test(error.message)) return next(new AppError(error.message, 400));
+    return next(new AppError('Could not clear the contact list.', 500));
   }
 };

@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { prisma } from '../../config/config.js';
+import { VOUCHER_TYPES, displayNameFor, limitFieldFor, lastAlertedFieldFor, resultsUrlFor } from '../voucher/voucherTypes.js';
 import { createNotification, sendPushNotification } from '../notification/pushHelper.js';
 import { sendEmail } from '../email/email.js';
 import { sendSMS, sendBatchSMS } from '../sms/smsHelper.js';
@@ -28,40 +29,31 @@ export const checkVoucherStock = async () => {
       return;
     }
 
-    // 2. Count current AVAILABLE vouchers for each type
-    const [wassceNovdecCount, beceCount] = await Promise.all([
-      prisma.voucher.count({ where: { type: 'WASSCE_NOVDEC', status: 'AVAILABLE' } }),
-      prisma.voucher.count({ where: { type: 'BECE', status: 'AVAILABLE' } })
-    ]);
+    // 2. Count current AVAILABLE vouchers, one query per type we sell
+    const counts = Object.fromEntries(
+      await Promise.all(
+        VOUCHER_TYPES.map(async (type) => [
+          type,
+          await prisma.voucher.count({ where: { type, status: 'AVAILABLE' } })
+        ])
+      )
+    );
 
     const now = new Date();
     const updates = {};
     const alertTypes = [];
 
-    // Check WASSCE_NOVDEC
-    if (wassceNovdecCount <= voucherConfig.wassceNovdecLimit) {
-      const lastAlerted = voucherConfig.wassceNovdecLastAlertedAt;
-      if (!lastAlerted || (now - new Date(lastAlerted)) >= COOLDOWN_MS) {
-        alertTypes.push({
-          type: 'WASSCE_NOVDEC',
-          count: wassceNovdecCount,
-          limit: voucherConfig.wassceNovdecLimit
-        });
-        updates.wassceNovdecLastAlertedAt = now;
-      }
-    }
+    // Alert once per cooldown window per type, so a new type is never skipped
+    for (const type of VOUCHER_TYPES) {
+      const limit = voucherConfig[limitFieldFor(type)];
+      if (counts[type] > limit) continue;
 
-    // Check BECE
-    if (beceCount <= voucherConfig.beceLimit) {
-      const lastAlerted = voucherConfig.beceLastAlertedAt;
-      if (!lastAlerted || (now - new Date(lastAlerted)) >= COOLDOWN_MS) {
-        alertTypes.push({
-          type: 'BECE',
-          count: beceCount,
-          limit: voucherConfig.beceLimit
-        });
-        updates.beceLastAlertedAt = now;
-      }
+      const lastAlertedField = lastAlertedFieldFor(type);
+      const lastAlerted = voucherConfig[lastAlertedField];
+      if (lastAlerted && (now - new Date(lastAlerted)) < COOLDOWN_MS) continue;
+
+      alertTypes.push({ type, count: counts[type], limit });
+      updates[lastAlertedField] = now;
     }
 
     if (alertTypes.length === 0) {
@@ -179,8 +171,9 @@ export const resendFailedVoucherDeliveries = async () => {
           .map((v, i) => `${i + 1}. Serial Number: ${v.serialNumber} PIN: ${readPin(v.pin)}`)
           .join('\n');
 
-        const checkLink = order.voucherType === 'BECE' ? 'https://eresults.waecgh.org/' : 'https://ghana.waecdirect.org/';
-        const smsMessage = `CivicTree: Thank you! Order: ${order.id}.\n\n Here are your ${order.voucherType} voucher codes:\n${voucherListStr}\nCheck results here: ${checkLink}`;
+        const checkLink = resultsUrlFor(order.voucherType);
+        const linkLine = checkLink ? `\nCheck results here: ${checkLink}` : '';
+        const smsMessage = `CivicTree: Thank you! Order: ${order.id}.\n\n Here are your ${displayNameFor(order.voucherType)} voucher codes:\n${voucherListStr}${linkLine}`;
 
         console.log(`[CRON] Retrying SMS to ${order.phoneNumber} for order ${order.id}...`);
 
@@ -266,189 +259,8 @@ export const reconcilePendingPayments = async () => {
   }
 };
 
-// /**
-//  * Executes automated daily revenue-share partner settlement at 11:59:59 PM.
-//  * Calculates total vouchers sold today, creates settlement record, and dispatches payout via Hubtel Send Money API.
-//  */
-// export const processDailyPartnerSettlement = async () => {
-//   try {
-//     console.log('[CRON 11:59:59 PM] Starting daily revenue-share partner settlement processing...');
-
-//     const activePartners = await prisma.partner.findMany({
-//       where: { status: 'Active' },
-//       include: {
-//         payoutAccounts: {
-//           where: { isDefault: true }
-//         }
-//       }
-//     });
-
-//     if (activePartners.length === 0) {
-//       console.log('[CRON 11:59:59 PM] No active partners found for settlement.');
-//       return;
-//     }
-
-//     // Calculate today's date range explicitly in Ghana Time (Africa/Accra / GMT)
-//     const now = new Date();
-//     const accraDateFormatter = new Intl.DateTimeFormat('en-CA', {
-//       timeZone: 'Africa/Accra',
-//       year: 'numeric',
-//       month: '2-digit',
-//       day: '2-digit'
-//     });
-//     const dateStr = accraDateFormatter.format(now); // YYYY-MM-DD
-//     const todayStart = new Date(`${dateStr}T00:00:00.000Z`);
-//     const todayEnd = new Date(`${dateStr}T23:59:59.999Z`);
-
-//     for (const partner of activePartners) {
-//       try {
-//         // Aggregate accrued transactions for today that have not been settled
-//         const accruedTxs = await prisma.partnerTransaction.findMany({
-//           where: {
-//             partnerId: partner.id,
-//             settlementStatus: 'Accrued',
-//             createdAt: { gte: todayStart, lte: todayEnd }
-//           }
-//         });
-
-//         const totalVouchersToday = accruedTxs.reduce((sum, tx) => sum + tx.quantity, 0);
-//         const perVoucherRate = 1.00; // Fixed GHS 1.00 per voucher
-//         const dailyPayoutAmount = parseFloat((totalVouchersToday * perVoucherRate).toFixed(2));
-
-//         if (dailyPayoutAmount <= 0) {
-//           console.log(`[CRON 11:55 PM GHANA] Partner ${partner.partnerName} (${partner.partnerId}) had 0 voucher sales today. Skipping payout.`);
-//           continue;
-//         }
-
-//         const defaultAccount = partner.payoutAccounts[0] || {
-//           accountNumber: partner.phone,
-//           accountName: partner.partnerName,
-//           provider: 'MTN Mobile Money'
-//         };
-
-//         const randomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-//         const cleanDateStr = dateStr.replace(/[^a-zA-Z0-9]/g, '');
-//         const reference = `PAY${cleanDateStr}${randomCode}`;
-
-//         // Create settlement log entry in DB
-//         const settlement = await prisma.partnerSettlement.create({
-//           data: {
-//             partnerId: partner.id,
-//             reference,
-//             amount: dailyPayoutAmount,
-//             fee: 0.00,
-//             netAmount: dailyPayoutAmount,
-//             payoutMethod: 'MOMO',
-//             provider: defaultAccount.provider || 'MTN Mobile Money',
-//             destinationAccount: defaultAccount.accountNumber || partner.phone,
-//             accountName: defaultAccount.accountName || partner.partnerName,
-//             status: 'Processing',
-//             notes: `Automated daily settlement for ${totalVouchersToday} vouchers sold on ${dateStr}`
-//           }
-//         });
-
-//         console.log(`[CRON 11:55 PM GHANA] Triggering Hubtel MoMo payout of GHS ${dailyPayoutAmount} to ${defaultAccount.accountNumber}...`);
-
-//         let payoutSuccess = false;
-//         try {
-//           const hubtelRes = await sendHubtelPayout({
-//             recipientName: defaultAccount.accountName || partner.partnerName,
-//             recipientNumber: defaultAccount.accountNumber || partner.phone,
-//             amount: dailyPayoutAmount,
-//             payoutMethod: 'MOBILE_MONEY',
-//             channel: defaultAccount.provider || 'MTN Mobile Money',
-//             clientReference: reference,
-//             description: `CivicTree Daily Partner Revenue Settlement - ${totalVouchersToday} vouchers`
-//           });
-//           payoutSuccess = hubtelRes.success;
-//         } catch (hubtelErr) {
-//           console.error(`[CRON 11:55 PM GHANA HUBTEL PAYOUT ERROR] For partner ${partner.partnerName}:`, hubtelErr.message);
-//         }
-
-//         const finalStatus = payoutSuccess ? 'Completed' : 'Pending';
-
-//         // Update settlement record
-//         await prisma.partnerSettlement.update({
-//           where: { id: settlement.id },
-//           data: {
-//             status: finalStatus,
-//             processedAt: payoutSuccess ? new Date() : null
-//           }
-//         });
-
-//         // Update partner balances
-//         await prisma.partner.update({
-//           where: { id: partner.id },
-//           data: {
-//             withdrawnAmount: { increment: dailyPayoutAmount },
-//             availableBalance: { decrement: dailyPayoutAmount }
-//           }
-//         });
-
-//         // Mark today's transactions as Settled
-//         const txIds = accruedTxs.map(t => t.id);
-//         if (txIds.length > 0) {
-//           await prisma.partnerTransaction.updateMany({
-//             where: { id: { in: txIds } },
-//             data: { settlementStatus: 'Settled' }
-//           });
-//         }
-
-//         // Send Partner In-App Notification
-//         await prisma.partnerNotification.create({
-//           data: {
-//             partnerId: partner.id,
-//             title: `Daily Revenue Settlement (${finalStatus})`,
-//             message: `Your daily settlement of GHS ${dailyPayoutAmount.toFixed(2)} for ${totalVouchersToday} vouchers sold today has been processed to ${defaultAccount.accountNumber}.`,
-//             type: 'PAYOUT_STATUS',
-//             link: '/partner/settlements'
-//           }
-//         });
-
-//         // Send SMS notifications to stakeholders
-//         const smsMessage = `CivicTree: Daily Partner revenue settlement of GHS ${dailyPayoutAmount.toFixed(2)} for ${totalVouchersToday} vouchers sold today has been processed to ${partner.partnerName} (${defaultAccount.accountNumber}). Ref: ${reference}`;
-//         const stakeholderPhones = ['0257581661', '0550807914', '233240897702'];
-
-//         sendBatchSMS({ recipients: stakeholderPhones, message: smsMessage }).catch(err =>
-//           console.error('[CRON 11:55 PM SMS ERROR] Failed to send stakeholder settlement SMS:', err)
-//         );
-
-//         // Send Email notifications to stakeholders
-//         const stakeholderEmails = ['joshuaasemani27@gmail.com', 'afriyieanthony013@gmail.com', 'owusuboat05@gmail.com'];
-//         const emailSubject = `[CivicTree] Daily Partner Revenue Settlement Disbursed - GHS ${dailyPayoutAmount.toFixed(2)}`;
-//         const emailHtml = `
-//           <h2>CivicTree Daily Partner Revenue Settlement Report</h2>
-//           <p>Dear Stakeholder,</p>
-//           <p>This is an automated report confirming that the daily revenue settlement for <strong>${partner.partnerName}</strong> has been processed.</p>
-//           <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse;">
-//             <tr><td><strong>Partner Name</strong></td><td>${partner.partnerName}</td></tr>
-//             <tr><td><strong>Destination MoMo Number</strong></td><td>${defaultAccount.accountNumber} (${defaultAccount.provider})</td></tr>
-//             <tr><td><strong>Total Vouchers Sold Today</strong></td><td>${totalVouchersToday}</td></tr>
-//             <tr><td><strong>Contract Share Rate</strong></td><td>GHS 1.00 per voucher</td></tr>
-//             <tr><td><strong>Total Disbursed Amount</strong></td><td><strong>GHS ${dailyPayoutAmount.toFixed(2)}</strong></td></tr>
-//             <tr><td><strong>Settlement Status</strong></td><td>${finalStatus}</td></tr>
-//             <tr><td><strong>Transaction Reference</strong></td><td>${reference}</td></tr>
-//             <tr><td><strong>Timestamp</strong></td><td>${new Date().toLocaleString('en-US', { timeZone: 'Africa/Accra' })} (Ghana Time)</td></tr>
-//           </table>
-//           <br/>
-//           <p>Regards,<br/><strong>CivicTree Automated Settlement Engine</strong></p>
-//         `;
-
-//         for (const recipientEmail of stakeholderEmails) {
-//           sendEmail({ to: recipientEmail, subject: emailSubject, html: emailHtml }).catch(err =>
-//             console.error(`[CRON 11:55 PM EMAIL ERROR] Failed to send settlement email to ${recipientEmail}:`, err)
-//           );
-//         }
-
-//         console.log(`[CRON 11:55 PM GHANA SUCCESS] Completed daily settlement & notifications for ${partner.partnerName}: GHS ${dailyPayoutAmount}`);
-//       } catch (partnerErr) {
-//         console.error(`[CRON 11:55 PM GHANA ERROR] Error settling partner ${partner.partnerId}:`, partnerErr);
-//       }
-//     }
-//   } catch (error) {
-//     console.error('[CRON 11:55 PM GHANA ERROR] Error in processDailyPartnerSettlement job:', error);
-//   }
-// };
+// The daily partner revenue settlement is disabled along with the partner
+// portal. Its previous implementation is in git history.
 
 /**
  * Initializes and schedules all cron jobs for the application.

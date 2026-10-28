@@ -166,6 +166,7 @@ export const startApp = async (mounts, extra) => {
 // ---- Data helpers -----------------------------------------------------------
 export const BECE_PRICE = 20;
 export const WASSCE_PRICE = 25;
+export const CTVET_NABTEX_PRICE = 18;
 
 export const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -190,7 +191,9 @@ export const resetDatabase = async () => {
   await prisma.partner.deleteMany();
   await prisma.user.deleteMany();
   await prisma.voucherConfig.deleteMany();
-  await prisma.voucherConfig.create({ data: { becePrice: BECE_PRICE, wassceNovdecPrice: WASSCE_PRICE } });
+  await prisma.voucherConfig.create({
+    data: { becePrice: BECE_PRICE, wassceNovdecPrice: WASSCE_PRICE, ctvetNabtexPrice: CTVET_NABTEX_PRICE }
+  });
 };
 
 /**

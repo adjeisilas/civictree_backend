@@ -1,4 +1,5 @@
 import { prisma } from '../../config/config.js';
+import { VOUCHER_TYPES, stockLimitFrom, zeroedByType } from '../../utils/voucher/voucherTypes.js';
 import { AppError } from '../../utils/error/AppError.js';
 
 /**
@@ -148,8 +149,13 @@ export const getDashboardStats = async (req, res, next) => {
     });
 
     const voucherSalesCountByType = {
-      WASSCE_NOVDEC: typeSales.find(g => g.voucherType === 'WASSCE_NOVDEC')?._sum.quantity || 0,
-      BECE: typeSales.find(g => g.voucherType === 'BECE')?._sum.quantity || 0
+      ...zeroedByType(),
+      ...Object.fromEntries(
+        VOUCHER_TYPES.map((type) => [
+          type,
+          typeSales.find((g) => g.voucherType === type)?._sum.quantity || 0
+        ])
+      )
     };
 
     // 4. Orders count by channel
@@ -195,8 +201,7 @@ export const getDashboardStats = async (req, res, next) => {
 
     // 6. Voucher stock status (refer to the UI spec)
     const config = await prisma.voucherConfig.findFirst();
-    const wassceNovdecLimit = config ? config.wassceNovdecLimit : 100;
-    const beceLimit = config ? config.beceLimit : 100;
+    // Each type's own low-stock threshold, with the schema default as fallback
 
     const getStockDetails = async (type, limit) => {
       const available = await prisma.voucher.count({ where: { type, status: 'AVAILABLE' } });
@@ -217,8 +222,14 @@ export const getDashboardStats = async (req, res, next) => {
     };
 
     const voucherStockStatus = {
-      WASSCE_NOVDEC: await getStockDetails('WASSCE_NOVDEC', wassceNovdecLimit),
-      BECE: await getStockDetails('BECE', beceLimit)
+      ...Object.fromEntries(
+        await Promise.all(
+          VOUCHER_TYPES.map(async (type) => [
+            type,
+            await getStockDetails(type, stockLimitFrom(config, type))
+          ])
+        )
+      )
     };
 
     // 7. First 5 recent orders

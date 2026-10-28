@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../config/config.js';
 import { AppError } from '../../utils/error/AppError.js';
+import { displayNameFor } from '../../utils/voucher/voucherTypes.js';
 import { logActivity } from '../../utils/activityLog/activityLogger.js';
 
 /**
@@ -278,7 +279,7 @@ export const getPartnerReports = async (req, res, next) => {
       const pShare = vSold * perVoucherCut;
       const pct = totalVouchersSold > 0 ? (vSold / totalVouchersSold) * 100 : 0;
       return {
-        category: c.voucherType === 'BECE' ? 'BECE Results Checker' : 'WASSCE Results Checker',
+        category: `${displayNameFor(c.voucherType)} Results Checker`,
         vouchersSold: vSold,
         partnerShare: pShare,
         percentageOfTotal: parseFloat(pct.toFixed(1))
